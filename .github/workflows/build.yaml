@@ -1,9 +1,11 @@
 name: build
 
 on:
+  # Fork: the full upstream release matrix runs only for master and release tags;
+  # multiplayer work is built and tested by multiplayer.yaml.
   push:
     branches:
-      - '*'
+      - 'master'
     tags:
       - 'mod*'
       - 'var*'
@@ -12,7 +14,7 @@ on:
       - 'tptlibsdev-*'
   pull_request:
     branches:
-      - '*'
+      - 'master'
 
 jobs:
   prepare:
