@@ -122,7 +122,9 @@ class Editor:
         except OSError:
             pass
         self.ws.close()
-        self.reader.join(timeout=3)
+        # Closing does not wake a blocked receive on every platform (macOS); the
+        # receive then ends at the 20 s socket timeout set in __init__.
+        self.reader.join(timeout=25)
         assert not self.reader.is_alive(), "reader did not stop"
 
 

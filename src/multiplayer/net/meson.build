@@ -21,7 +21,15 @@ else
   mp_zlib = dependency('zlib')
 endif
 meson.override_dependency('tpt-mp-tls', mp_tls)
-ix = subproject('ixwebsocket').get_variable('ixwebsocket_dep')
+# MSVC: the subproject must use the same C runtime as everything else
+# (static with the static dependency pack), or the standard library links twice.
+ix_options = []
+foreach option : target_options
+  if option.startswith('b_vscrt=')
+    ix_options += option
+  endif
+endforeach
+ix = subproject('ixwebsocket', default_options: ix_options).get_variable('ixwebsocket_dep')
 # Optional image encoder/decoder. Builds without libwebp remain strictly lossless.
 mp_webp = dependency('libwebp', required: false)
 mp_codec_args = []

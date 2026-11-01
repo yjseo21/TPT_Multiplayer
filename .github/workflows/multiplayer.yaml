@@ -19,6 +19,8 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libx11-dev  # SDL's headers include Xlib
       - run: python -m pip install meson==1.12.1 ninja
       - run: python tools/multiplayer/build.py --test
       - uses: actions/upload-artifact@v4
