@@ -2,3 +2,5 @@
 !*.wrap
 !.gitignore
 !update-wraps.sh
+!packagefiles/
+!packagefiles/**

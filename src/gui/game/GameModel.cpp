@@ -940,7 +940,17 @@ void GameModel::SetSaveFile(std::unique_ptr<SaveFile> newSave, bool invertInclud
 
 Simulation * GameModel::GetSimulation()
 {
-	return sim.get();
+	return shownSim ? shownSim : sim.get();
+}
+
+void GameModel::ShowSimulation(Simulation *shown, std::optional<bool> shownPaused)
+{
+	bool simulationChanged = shownSim != shown;
+	bool pausedChanged = GetPaused() != (shown ? shownPaused.value_or(true) : paused);
+	shownSim = shown;
+	roomPaused = shown ? std::optional<bool>(shownPaused.value_or(true)) : std::nullopt;
+	if (simulationChanged) notifySimulationChanged();
+	if (pausedChanged) notifyPausedChanged();
 }
 
 Renderer * GameModel::GetRenderer()
@@ -1133,7 +1143,7 @@ void GameModel::SetPaused(bool pauseState)
 
 bool GameModel::GetPaused() const
 {
-	return paused;
+	return roomPaused.value_or(paused);
 }
 
 void GameModel::SetDecoration(bool decorationState)

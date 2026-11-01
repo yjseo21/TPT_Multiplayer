@@ -1,0 +1,76 @@
+#pragma once
+#include "Session.h"
+#include <json/json.h>
+#include <deque>
+#include <memory>
+#include <string>
+#include <vector>
+
+class Simulation;
+namespace multiplayer
+{
+// One tool use from the game's interface, as the game's controller performs it.
+struct ToolStroke
+{
+    std::string tool;               // tool identifier, for example DEFAULT_PT_DUST
+    std::string action;             // point, line, box, fill, click or drag
+    int x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+    int radiusX = 0, radiusY = 0;
+    std::string brush = "ellipse";  // ellipse, rectangle or triangle
+    float strength = 1;
+    bool dragging = false, shift = false, ctrl = false, alt = false;
+    int replaceFlags = 0, replaceSelected = 0;
+};
+// Turns a stroke into protocol commands, splitting lines whose brush work
+// exceeds the per-command limit. Coordinates are clamped to the editable area.
+std::vector<Json::Value> StrokeCommands(const ToolStroke &stroke);
+// Whether the server can replay this tool (elements, walls, simulation tools).
+bool RoomSupportsTool(const std::string &identifier);
+
+// The game's connection to a room: a local-simulation Session plus what the
+// game's interface needs from it. Main thread only; call Update() every frame.
+class GameSession
+{
+public:
+    explicit GameSession(SessionOptions options);
+    ~GameSession();
+    // Drains the network and steps the room's world. True when Shown() now
+    // returns a different simulation (synchronized, resynchronized or lost).
+    bool Update();
+    // The room's world when synchronized, otherwise an empty placeholder.
+    // Valid until the next Update() that returns true.
+    Simulation *Shown() const { return shown; }
+    bool Synchronized() const { return session.Synchronized(); }
+    bool Paused() const;
+    bool Admin() const { return session.Admin(); }
+    const SessionOptions &Options() const { return session.Options(); }
+    // One short line for the game's HUD.
+    std::string Status();
+    const Json::Value &Players() const { return session.Players(); }
+    Json::Value Sample() { return session.Sample(); }
+    std::vector<double> TakeEditLatencies() { return session.TakeEditLatencies(); }
+
+    // Edits. On refusal, `why` says so in words the player can act on.
+    bool Send(const ToolStroke &stroke, std::string &why);
+    bool SetPaused(bool paused, std::string &why);
+    bool Step(std::string &why);
+    bool Clear(std::string &why);
+    void Cursor(bool visible, int x, int y, int radius, bool drawing) { session.SendCursor(visible, x, y, radius, drawing); }
+
+    // Commands accepted but not yet sent (paced to the server's editing budget).
+    size_t Queued() const { return outbox.size(); }
+
+private:
+    Session session;
+    std::unique_ptr<Simulation> placeholder;
+    Simulation *shown = nullptr;
+    // Outgoing commands in order, released as the server's budget allows, so a huge
+    // stroke arrives progressively instead of being refused or dropping the link.
+    struct Outgoing { Json::Value command; double cost; };
+    std::deque<Outgoing> outbox;
+    double queuedWork = 0, workTokens, operationTokens, refilledAt;
+    bool Enqueue(std::vector<Json::Value> commands, std::string &why);
+    void Flush();
+    bool SendAdmin(Json::Value command, std::string &why);
+};
+}

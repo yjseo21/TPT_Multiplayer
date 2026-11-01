@@ -300,3 +300,5 @@ option(
 	value: false,
 	description: 'Run clang-tidy to lint programming issues'
 )
+option('build_multiplayer', type: 'boolean', value: false,
+    description: 'Build the dedicated server, remote client, and multiplayer tests')

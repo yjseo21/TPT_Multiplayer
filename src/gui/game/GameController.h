@@ -44,6 +44,7 @@ class GameSave;
 class LoginController;
 class TagsController;
 class ConsoleController;
+namespace multiplayer { class GameSession; }
 class GameController : public ClientListener, public ExplicitSingleton<GameController>
 {
 	CommandInterfacePtr commandInterface;
@@ -67,6 +68,26 @@ private:
 	unsigned int debugFlags;
 	
 	void OpenSaveDone();
+	void CreateDebugInfo();
+
+	// Multiplayer: a room on a dedicated server, shown instead of the player's own
+	// world while showRoom is set. The own world keeps its state underneath.
+	std::unique_ptr<multiplayer::GameSession> room;
+	bool showRoom = false;
+	// While the room is shown: true (after telling the player) if this action
+	// cannot be done in a room. Never true when the own world is shown.
+	bool RoomRefuses(String what);
+	// Sends a tool use to the room instead of applying it locally. False when the
+	// player's own world is shown and the caller should apply it as usual.
+	bool RoomTool(int toolSelection, const char *action, ui::Point a, ui::Point b, bool dragging, bool useToolStrength);
+	void UpdateRoom();
+	struct RoomAutomation;
+	std::unique_ptr<RoomAutomation> roomAutomation;
+	void RunRoomAutomation();
+	// Throttled player notices (a refused drag would otherwise log every frame).
+	void RoomNotice(String message);
+	String lastRoomNotice;
+	double lastRoomNoticeAt = -10;
 public:
 	enum MouseupReason
 	{
@@ -217,6 +238,12 @@ public:
 
 	void SetToolIndex(ByteString identifier, std::optional<int> index);
 	void InitCommandInterface();
+
+	// Multiplayer. Credentials come from TPT_ROOM_TOKEN / TPT_ADMIN_TOKEN.
+	void JoinRoom(ByteString url, ByteString name);
+	// Switch between the room's world and the player's own (the room stays connected).
+	void ToggleRoom();
+	bool ShowingRoom() const { return showRoom; }
 
 	FrameTime *GetFrameTime() const;
 };

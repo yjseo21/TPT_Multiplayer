@@ -355,6 +355,8 @@ AnyType CommandInterface::tptS_set(std::deque<String> * words)
 	AnyType value = eval(words);
 
 	Simulation * sim = m->GetSimulation();
+	if (m->ShowingRoom())
+		throw GeneralException("Changing the world from the console is not available in rooms yet");
 	auto prop = GetPropertyOffset(property.Value().ToUtf8());
 	if (!prop)
 	{
@@ -486,6 +488,8 @@ AnyType CommandInterface::tptS_create(std::deque<String> * words)
 	PointType position = eval(words);
 
 	Simulation * sim = m->GetSimulation();
+	if (m->ShowingRoom())
+		throw GeneralException("Changing the world from the console is not available in rooms yet");
 
 	int type;
 	if(createType.GetType() == TypeNumber)
@@ -519,6 +523,8 @@ AnyType CommandInterface::tptS_delete(std::deque<String> * words)
 	AnyType partRef = eval(words);
 
 	Simulation * sim = m->GetSimulation();
+	if (m->ShowingRoom())
+		throw GeneralException("Changing the world from the console is not available in rooms yet");
 
 	if(partRef.GetType() == TypePoint)
 	{
@@ -564,6 +570,8 @@ AnyType CommandInterface::tptS_bubble(std::deque<String> * words)
 			throw GeneralException("Invalid position");
 
 	Simulation * sim = m->GetSimulation();
+	if (m->ShowingRoom())
+		throw GeneralException("Changing the world from the console is not available in rooms yet");
 
 	int first, rem1, rem2;
 
@@ -607,6 +615,8 @@ AnyType CommandInterface::tptS_reset(std::deque<String> * words)
 	String resetStr = reset.Value();
 
 	Simulation * sim = m->GetSimulation();
+	if (m->ShowingRoom())
+		throw GeneralException("Changing the world from the console is not available in rooms yet");
 
 	if (resetStr == "pressure")
 	{

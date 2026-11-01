@@ -67,6 +67,7 @@ private:
 	int lastMenu;
 
 	ui::Fade toolTipPresence{ ui::Fade::LinearProfile{ 120.f, 60.f }, 0, 0 };
+	String roomStatus; // multiplayer: shown under the FPS line
 	String toolTip;
 	bool isToolTipFadingIn;
 	ui::Point toolTipPosition;
@@ -187,6 +188,7 @@ public:
 	//Breaks MVC, but any other way is going to be more of a mess.
 	ui::Point GetMousePosition();
 	void SetSample(SimulationSample sample);
+	void SetRoomStatus(String status) { roomStatus = status; }
 	void SetHudEnable(bool hudState);
 	bool GetHudEnable();
 	void SetBrushEnable(bool hudState);

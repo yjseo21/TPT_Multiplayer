@@ -1,4 +1,11 @@
 #include "GameController.h"
+#ifdef TPT_GAME_MULTIPLAYER
+# include "multiplayer/GameSession.h"
+# include <fstream>
+# include <iostream>
+#else
+namespace multiplayer { class GameSession {}; }
+#endif
 
 #include "Brush.h"
 #include "Controller.h"
@@ -110,12 +117,7 @@ GameController::GameController():
 
 	Client::Ref().AddListener(this);
 
-	debugInfo.push_back(std::make_unique<DebugParts            >(DEBUG_PARTS     , gameModel->GetSimulation()));
-	debugInfo.push_back(std::make_unique<ElementPopulationDebug>(DEBUG_ELEMENTPOP, gameModel->GetSimulation()));
-	debugInfo.push_back(std::make_unique<DebugLines            >(DEBUG_LINES     , gameView, this));
-	debugInfo.push_back(std::make_unique<ParticleDebug         >(DEBUG_PARTICLE  , gameModel->GetSimulation(), gameModel));
-	debugInfo.push_back(std::make_unique<SurfaceNormals        >(DEBUG_SURFNORM  , gameModel->GetSimulation(), gameView, this));
-	debugInfo.push_back(std::make_unique<AirVelocity           >(DEBUG_AIRVEL    , gameModel->GetSimulation(), gameView, this));
+	CreateDebugInfo();
 }
 
 GameController::~GameController()
@@ -173,6 +175,8 @@ GameController::~GameController()
 
 bool GameController::HistoryRestore()
 {
+	if (RoomRefuses("Undo"))
+		return false;
 	if (!gameModel->HistoryCanRestore())
 	{
 		return false;
@@ -195,6 +199,8 @@ bool GameController::HistoryRestore()
 
 void GameController::HistorySnapshot()
 {
+	if (showRoom)
+		return; // no history in rooms
 	// * Calling HistorySnapshot means the user decided to use the current state and
 	//   forfeit the option to go back to whatever they Ctrl+Z'd their way back from.
 	beforeRestore.reset();
@@ -203,6 +209,8 @@ void GameController::HistorySnapshot()
 
 bool GameController::HistoryForward()
 {
+	if (RoomRefuses("Redo"))
+		return false;
 	if (!gameModel->HistoryCanForward())
 	{
 		return false;
@@ -252,6 +260,8 @@ std::pair<int, sign::Type> GameController::GetSignSplit(int signID)
 
 void GameController::PlaceSave(ui::Point position)
 {
+	if (RoomRefuses("Pasting saves and stamps"))
+		return;
 	auto *placeSave = gameModel->GetTransformedPlaceSave();
 	if (placeSave)
 	{
@@ -294,6 +304,8 @@ void GameController::AdjustGridSize(int direction)
 
 void GameController::InvertAirSim()
 {
+	if (RoomRefuses("Inverting air"))
+		return;
 	gameModel->GetSimulation()->air->Invert();
 }
 
@@ -362,6 +374,8 @@ ui::Point GameController::NormaliseBlockCoord(ui::Point point)
 
 void GameController::DrawRect(int toolSelection, ui::Point point1, ui::Point point2)
 {
+	if (RoomTool(toolSelection, "box", point1, point2, false, false))
+		return;
 	Simulation * sim = gameModel->GetSimulation();
 	Tool * activeTool = gameModel->GetActiveTool(toolSelection);
 	gameModel->SetLastTool(activeTool);
@@ -374,6 +388,8 @@ void GameController::DrawRect(int toolSelection, ui::Point point1, ui::Point poi
 
 void GameController::DrawLine(int toolSelection, ui::Point point1, ui::Point point2)
 {
+	if (RoomTool(toolSelection, "line", point1, point2, false, false))
+		return;
 	Simulation * sim = gameModel->GetSimulation();
 	Tool * activeTool = gameModel->GetActiveTool(toolSelection);
 	gameModel->SetLastTool(activeTool);
@@ -386,6 +402,8 @@ void GameController::DrawLine(int toolSelection, ui::Point point1, ui::Point poi
 
 void GameController::DrawFill(int toolSelection, ui::Point point)
 {
+	if (RoomTool(toolSelection, "fill", point, point, false, false))
+		return;
 	Simulation * sim = gameModel->GetSimulation();
 	Tool * activeTool = gameModel->GetActiveTool(toolSelection);
 	gameModel->SetLastTool(activeTool);
@@ -398,6 +416,8 @@ void GameController::DrawFill(int toolSelection, ui::Point point)
 
 void GameController::DrawPoints(int toolSelection, ui::Point oldPos, ui::Point newPos, bool held)
 {
+	if (RoomTool(toolSelection, held ? "line" : "point", held ? oldPos : newPos, newPos, true, true))
+		return;
 	Simulation * sim = gameModel->GetSimulation();
 	Tool * activeTool = gameModel->GetActiveTool(toolSelection);
 	gameModel->SetLastTool(activeTool);
@@ -439,6 +459,8 @@ void GameController::TransformPlaceSave(Mat2<int> transform, Vec2<int> nudge)
 
 void GameController::ToolClick(int toolSelection, ui::Point point)
 {
+	if (RoomTool(toolSelection, "click", point, point, false, true))
+		return;
 	Simulation * sim = gameModel->GetSimulation();
 	Tool * activeTool = gameModel->GetActiveTool(toolSelection);
 	Brush &cBrush = gameModel->GetBrush();
@@ -449,6 +471,8 @@ void GameController::ToolClick(int toolSelection, ui::Point point)
 
 void GameController::ToolDrag(int toolSelection, ui::Point point1, ui::Point point2)
 {
+	if (RoomTool(toolSelection, "drag", point1, point2, false, true))
+		return;
 	Simulation * sim = gameModel->GetSimulation();
 	Tool * activeTool = gameModel->GetActiveTool(toolSelection);
 	Brush &cBrush = gameModel->GetBrush();
@@ -511,6 +535,8 @@ void GameController::CopyRegion(ui::Point point1, ui::Point point2)
 
 void GameController::CutRegion(ui::Point point1, ui::Point point2)
 {
+	if (RoomRefuses("Cutting (copying works)"))
+		return;
 	CopyRegion(point1, point2);
 	HistorySnapshot();
 	gameModel->GetSimulation()->clear_area(point1.X, point1.Y, point2.X-point1.X, point2.Y-point1.Y);
@@ -581,7 +607,8 @@ bool GameController::MouseUp(int x, int y, unsigned button, MouseupReason reason
 						OpenSearch(str.Substr(3, si.first - 3));
 						break;
 					case sign::Type::Button:
-						gameModel->GetSimulation()->create_part(-1, foundSign.x, foundSign.y, PT_SPRK);
+						if (!RoomRefuses("Sign buttons"))
+							gameModel->GetSimulation()->create_part(-1, foundSign.x, foundSign.y, PT_SPRK);
 						break;
 					default: break;
 					}
@@ -613,9 +640,14 @@ bool GameController::KeyPress(int key, int scan, bool repeat, bool shift, bool c
 	bool ret = commandInterface->HandleEvent(KeyPressEvent{ { key, scan, repeat, shift, ctrl, alt } });
 	if (repeat)
 		return ret;
+	if (ret && key == SDLK_m && ctrl && shift && !alt)
+	{
+		ToggleRoom(); // between a joined room and the player's own canvas
+		return false;
+	}
 	if (ret)
 	{
-		Simulation * sim = gameModel->GetSimulation();
+		Simulation * sim = gameModel->GetLocalSimulation();
 		if (!gameView->GetPlacingSave())
 		{
 			// Go right command
@@ -698,7 +730,7 @@ bool GameController::KeyRelease(int key, int scan, bool repeat, bool shift, bool
 		return ret;
 	if (ret)
 	{
-		Simulation * sim = gameModel->GetSimulation();
+		Simulation * sim = gameModel->GetLocalSimulation();
 		if (key == SDLK_RIGHT || key == SDLK_LEFT)
 		{
 			sim->player.pcomm = sim->player.comm;  //Saving last movement
@@ -782,6 +814,8 @@ void GameController::Exit()
 
 void GameController::ResetAir()
 {
+	if (RoomRefuses("Resetting air"))
+		return;
 	Simulation * sim = gameModel->GetSimulation();
 	sim->air->Clear();
 	for (int i = 0; i < NPART; i++)
@@ -795,6 +829,8 @@ void GameController::ResetAir()
 
 void GameController::ResetSpark()
 {
+	if (RoomRefuses("Resetting sparks"))
+		return;
 	auto &sd = SimulationData::CRef();
 	Simulation * sim = gameModel->GetSimulation();
 	for (int i = 0; i < NPART; i++)
@@ -821,6 +857,8 @@ void GameController::ResetSpark()
 
 void GameController::SwitchGravity()
 {
+	if (RoomRefuses("Changing gravity mode"))
+		return;
 	gameModel->GetSimulation()->gravityMode = (gameModel->GetSimulation()->gravityMode + 1) % NUM_GRAVMODES;
 
 	switch (gameModel->GetSimulation()->gravityMode)
@@ -842,6 +880,8 @@ void GameController::SwitchGravity()
 
 void GameController::SwitchAir()
 {
+	if (RoomRefuses("Changing air mode"))
+		return;
 	gameModel->GetSimulation()->air->airMode = (gameModel->GetSimulation()->air->airMode + 1) % NUM_AIRMODES;
 
 	switch (gameModel->GetSimulation()->air->airMode)
@@ -866,6 +906,8 @@ void GameController::SwitchAir()
 
 void GameController::ToggleAHeat()
 {
+	if (RoomRefuses("Changing ambient heat"))
+		return;
 	gameModel->SetAHeatEnable(!gameModel->GetAHeatEnable());
 }
 
@@ -876,11 +918,15 @@ bool GameController::GetAHeatEnable()
 
 void GameController::ResetAHeat()
 {
+	if (RoomRefuses("Resetting ambient heat"))
+		return;
 	gameModel->ResetAHeat();
 }
 
 void GameController::ToggleNewtonianGravity()
 {
+	if (RoomRefuses("Newtonian gravity"))
+		return;
 	gameModel->SetNewtonianGravity(!gameModel->GetNewtonianGrvity());
 }
 
@@ -912,6 +958,7 @@ void GameController::Update()
 	});
 	FrameTime::Frame frame(gameModel->frameTime.get());
 	FrameTime::Span span(gameModel->frameTime.get(), "GameController::Update");
+	UpdateRoom();
 
 	auto &sd = SimulationData::CRef();
 	ui::Point pos = gameView->GetMousePosition();
@@ -921,8 +968,12 @@ void GameController::Update()
 	else
 		gameView->SetSample(gameModel->GetSimulation()->GetSample(pos.X, pos.Y));
 
-	Simulation * sim = gameModel->GetSimulation();
-	if (gameModel->IsSimRunning())
+	Simulation * sim = gameModel->GetLocalSimulation();
+	if (showRoom)
+	{
+		// The room's world was stepped by UpdateRoom(); the own world waits.
+	}
+	else if (gameModel->IsSimRunning())
 	{
 		gameModel->UpdateUpTo(NPART);
 	}
@@ -1018,11 +1069,29 @@ bool GameController::GetPaused() const
 
 void GameController::SetPaused(bool pauseState)
 {
+#ifdef TPT_GAME_MULTIPLAYER
+	if (showRoom)
+	{
+		std::string why;
+		if (!room->SetPaused(pauseState, why))
+			gameModel->Log(ByteString(why).FromUtf8(), false);
+		return;
+	}
+#endif
 	gameModel->SetPaused(pauseState);
 }
 
 void GameController::SetPaused()
 {
+#ifdef TPT_GAME_MULTIPLAYER
+	if (showRoom)
+	{
+		std::string why;
+		if (!room->SetPaused(!gameModel->GetPaused(), why))
+			gameModel->Log(ByteString(why).FromUtf8(), false);
+		return;
+	}
+#endif
 	gameModel->SetPaused(!gameModel->GetPaused());
 }
 
@@ -1089,6 +1158,8 @@ int GameController::GetEdgeMode()
 
 void GameController::SetEdgeMode(int edgeMode)
 {
+	if (RoomRefuses("Changing edge mode"))
+		return;
 	if (edgeMode < 0 || edgeMode >= NUM_EDGEMODES)
 		edgeMode = 0;
 
@@ -1164,7 +1235,7 @@ void GameController::SetActiveTool(int toolSelection, Tool * tool)
 		toolSelection = 0;
 	gameModel->SetActiveTool(toolSelection, tool);
 	if (toolSelection == 3)
-		gameModel->GetSimulation()->replaceModeSelected = tool->ToolID;
+		gameModel->GetLocalSimulation()->replaceModeSelected = tool->ToolID;
 	gameModel->SetLastTool(tool);
 	tool->Select(toolSelection);
 }
@@ -1189,12 +1260,12 @@ Tool *GameController::GetLastTool()
 
 int GameController::GetReplaceModeFlags()
 {
-	return gameModel->GetSimulation()->replaceModeFlags;
+	return gameModel->GetLocalSimulation()->replaceModeFlags;
 }
 
 void GameController::SetReplaceModeFlags(int flags)
 {
-	int old_flags = gameModel->GetSimulation()->replaceModeFlags;
+	int old_flags = gameModel->GetLocalSimulation()->replaceModeFlags;
 	if (!(old_flags & REPLACE_MODE) && (flags & REPLACE_MODE))
 	{
 		// if replace mode has just been enabled, disable specific delete
@@ -1210,7 +1281,7 @@ void GameController::SetReplaceModeFlags(int flags)
 		// if both have just been enabled, arbitrarily disable one of them
 		flags &= ~SPECIFIC_DELETE;
 	}
-	gameModel->GetSimulation()->replaceModeFlags = flags;
+	gameModel->GetLocalSimulation()->replaceModeFlags = flags;
 }
 
 void GameController::OpenSearch(String searchText)
@@ -1289,12 +1360,16 @@ void GameController::OpenLocalSaveWindow(bool asCurrent)
 
 void GameController::LoadSaveFile(std::unique_ptr<SaveFile> file)
 {
+	if (showRoom)
+		ToggleRoom();
 	gameModel->SetSaveFile(std::move(file), gameView->ShiftBehaviour());
 }
 
 
 void GameController::LoadSave(std::unique_ptr<SaveInfo> save)
 {
+	if (showRoom)
+		ToggleRoom();
 	gameModel->SetSave(std::move(save), gameView->ShiftBehaviour());
 }
 
@@ -1444,6 +1519,8 @@ void GameController::OpenRenderOptions()
 
 void GameController::OpenSaveWindow()
 {
+	if (RoomRefuses("Saving the room's world"))
+		return;
 	auto user = gameModel->GetUser();
 	if (user)
 	{
@@ -1487,6 +1564,8 @@ void GameController::OpenSaveWindow()
 
 void GameController::SaveAsCurrent()
 {
+	if (RoomRefuses("Saving the room's world"))
+		return;
 	auto user = gameModel->GetUser();
 	if (gameModel->GetSave() && gameModel->GetSave()->IsOwn())
 	{
@@ -1526,6 +1605,15 @@ void GameController::SaveAsCurrent()
 
 void GameController::FrameStep()
 {
+#ifdef TPT_GAME_MULTIPLAYER
+	if (showRoom)
+	{
+		std::string why;
+		if (!room->Step(why))
+			gameModel->Log(ByteString(why).FromUtf8(), false);
+		return;
+	}
+#endif
 	gameModel->FrameStep(1);
 	gameModel->SetPaused(true);
 }
@@ -1545,6 +1633,15 @@ void GameController::ChangeBrush()
 
 void GameController::ClearSim()
 {
+#ifdef TPT_GAME_MULTIPLAYER
+	if (showRoom)
+	{
+		std::string why;
+		if (!room->Clear(why))
+			gameModel->Log(ByteString(why).FromUtf8(), false);
+		return;
+	}
+#endif
 	HistorySnapshot();
 	gameModel->SetSave(nullptr, false);
 	gameModel->ClearSimulation();
@@ -1567,6 +1664,8 @@ String GameController::BasicParticleInfo(Particle const &sample_part)
 
 void GameController::ReloadSim()
 {
+	if (RoomRefuses("Reloading"))
+		return;
 	if(gameModel->GetSave() && gameModel->GetSave()->GetGameSave())
 	{
 		HistorySnapshot();
@@ -1785,4 +1884,246 @@ void GameController::SetToolIndex(ByteString identifier, std::optional<int> inde
 FrameTime *GameController::GetFrameTime() const
 {
 	return gameModel->frameTime.get();
+}
+
+void GameController::CreateDebugInfo()
+{
+	// Debug overlays read one simulation: recreated when the shown world changes.
+	debugInfo.clear();
+	debugInfo.push_back(std::make_unique<DebugParts            >(DEBUG_PARTS     , gameModel->GetSimulation()));
+	debugInfo.push_back(std::make_unique<ElementPopulationDebug>(DEBUG_ELEMENTPOP, gameModel->GetSimulation()));
+	debugInfo.push_back(std::make_unique<DebugLines            >(DEBUG_LINES     , gameView, this));
+	debugInfo.push_back(std::make_unique<ParticleDebug         >(DEBUG_PARTICLE  , gameModel->GetSimulation(), gameModel));
+	debugInfo.push_back(std::make_unique<SurfaceNormals        >(DEBUG_SURFNORM  , gameModel->GetSimulation(), gameView, this));
+	debugInfo.push_back(std::make_unique<AirVelocity           >(DEBUG_AIRVEL    , gameModel->GetSimulation(), gameView, this));
+}
+
+// Multiplayer rooms. Everything below is inert unless the player joined a room.
+#ifdef TPT_GAME_MULTIPLAYER
+// Test automation (TPT_MP_AUTOMATION=steps.jsonl): drives the real controller
+// entry points the mouse and keyboard use, and logs room status once a second
+// to TPT_MP_AUTOMATION_LOG. Steps: {"at": seconds, "do": ...}, where "do" is
+// tool (identifier), brush (id, rx, ry), points (x1,y1,x2,y2,held), line, rect,
+// fill, toggle, pause (paused), step, clear, local (a refused action), or quit.
+struct GameController::RoomAutomation
+{
+	std::vector<Json::Value> steps;
+	size_t next = 0;
+	double began = 0, nextLog = 0;
+	std::ofstream log;
+};
+#else
+struct GameController::RoomAutomation {};
+#endif
+
+void GameController::RoomNotice(String message)
+{
+	auto now = Platform::GetTime() / 1000.0;
+	if (message == lastRoomNotice && now - lastRoomNoticeAt < 3)
+		return;
+	lastRoomNotice = message;
+	lastRoomNoticeAt = now;
+	gameModel->Log(message, false);
+}
+
+bool GameController::RoomRefuses(String what)
+{
+	if (!showRoom)
+		return false;
+	RoomNotice(what + " is not available in rooms yet. Ctrl+Shift+M switches to your own canvas.");
+	return true;
+}
+
+bool GameController::RoomTool(int toolSelection, const char *action, ui::Point a, ui::Point b, bool dragging, bool useToolStrength)
+{
+#ifdef TPT_GAME_MULTIPLAYER
+	if (!showRoom)
+		return false;
+	Tool *activeTool = gameModel->GetActiveTool(toolSelection);
+	if (!activeTool)
+		return true;
+	gameModel->SetLastTool(activeTool);
+	auto brushID = gameModel->GetBrushID();
+	if (brushID >= NUM_DEFAULTBRUSHES)
+	{
+		RoomNotice("Custom brushes are not available in rooms yet.");
+		return true;
+	}
+	multiplayer::ToolStroke stroke;
+	stroke.tool = activeTool->Identifier;
+	stroke.action = action;
+	stroke.x1 = a.X; stroke.y1 = a.Y; stroke.x2 = b.X; stroke.y2 = b.Y;
+	auto radius = gameModel->GetBrush().GetRadius();
+	stroke.radiusX = radius.X; stroke.radiusY = radius.Y;
+	stroke.brush = brushID == BRUSH_SQUARE ? "rectangle" : brushID == BRUSH_TRIANGLE ? "triangle" :
+		(gameModel->GetPerfectCircle() ? "ellipse-perfect" : "ellipse");
+	stroke.strength = useToolStrength ? gameModel->GetToolStrength() : 1.0f;
+	stroke.dragging = dragging;
+	stroke.shift = gameView->ShiftBehaviour(); stroke.ctrl = gameView->CtrlBehaviour(); stroke.alt = gameView->AltBehaviour();
+	stroke.replaceFlags = GetReplaceModeFlags();
+	stroke.replaceSelected = gameModel->GetLocalSimulation()->replaceModeSelected;
+	std::string why;
+	if (!room->Send(stroke, why))
+		RoomNotice(ByteString(why).FromUtf8());
+	return true;
+#else
+	return false;
+#endif
+}
+
+void GameController::JoinRoom(ByteString url, ByteString name)
+{
+#ifdef TPT_GAME_MULTIPLAYER
+	auto env = [](const char *key) { auto *value = std::getenv(key); return std::string(value ? value : ""); };
+	bool local = url.BeginsWith("ws://127.0.0.1") || url.BeginsWith("ws://localhost") || url.BeginsWith("ws://[::1]");
+	if (!url.BeginsWith("wss://") && !local)
+	{
+		gameModel->Log("Rooms on other computers need a wss:// address.", false);
+		return;
+	}
+	multiplayer::SessionOptions options;
+	options.url = url; options.name = name.size() ? std::string(name.substr(0, 32)) : "Player";
+	options.roomToken = env("TPT_ROOM_TOKEN"); options.adminToken = env("TPT_ADMIN_TOKEN");
+	try
+	{
+		room = std::make_unique<multiplayer::GameSession>(options);
+	}
+	catch (const std::exception &e)
+	{
+		gameModel->Log(ByteString("Could not join the room: ") .FromUtf8() + ByteString(e.what()).FromUtf8(), false);
+		return;
+	}
+	showRoom = true;
+	gameModel->ShowSimulation(room->Shown(), room->Paused());
+	CreateDebugInfo();
+	gameModel->Log("Joining room " + url.FromUtf8() + ". Ctrl+Shift+M switches between the room and your own canvas.", false);
+	auto script = env("TPT_MP_AUTOMATION");
+	if (!script.empty())
+	{
+		roomAutomation = std::make_unique<RoomAutomation>();
+		std::ifstream input(script);
+		std::string line;
+		while (std::getline(input, line))
+			if (!line.empty())
+				roomAutomation->steps.push_back(multiplayer::ParseJson(line));
+		roomAutomation->began = Platform::GetTime() / 1000.0;
+		auto logPath = env("TPT_MP_AUTOMATION_LOG");
+		if (!logPath.empty())
+			roomAutomation->log.open(logPath);
+	}
+#else
+	gameModel->Log("This build has no multiplayer.", false);
+#endif
+}
+
+void GameController::ToggleRoom()
+{
+	if (!room)
+	{
+		gameModel->Log("You are not in a room. Start the game with join:ws://host:port to join one.", false);
+		return;
+	}
+#ifdef TPT_GAME_MULTIPLAYER
+	showRoom = !showRoom;
+	gameModel->ShowSimulation(showRoom ? room->Shown() : nullptr, room->Paused());
+	CreateDebugInfo();
+	gameModel->Log(showRoom ? String("Showing the room.") : String("Showing your own canvas; the room stays connected."), false);
+#endif
+}
+
+void GameController::UpdateRoom()
+{
+#ifdef TPT_GAME_MULTIPLAYER
+	if (!room)
+		return;
+	bool changed;
+	try
+	{
+		changed = room->Update();
+	}
+	catch (const std::exception &e)
+	{
+		gameModel->Log(ByteString("Room connection ended: ").FromUtf8() + ByteString(e.what()).FromUtf8(), false);
+		room.reset();
+		if (showRoom)
+		{
+			showRoom = false;
+			gameModel->ShowSimulation(nullptr, std::nullopt);
+			CreateDebugInfo();
+		}
+		gameView->SetRoomStatus("");
+		return;
+	}
+	if (showRoom)
+	{
+		gameModel->ShowSimulation(room->Shown(), room->Paused());
+		if (changed)
+			CreateDebugInfo();
+		auto mouse = PointTranslate(gameView->GetMousePosition());
+		bool inside = mouse.X >= 0 && mouse.X < XRES && mouse.Y >= 0 && mouse.Y < YRES;
+		room->Cursor(inside, mouse.X, mouse.Y, gameModel->GetBrush().GetRadius().X, false);
+	}
+	gameView->SetRoomStatus(ByteString(showRoom ? room->Status() + " | Ctrl+Shift+M: your canvas"
+	                                            : std::string("Your canvas | Ctrl+Shift+M: back to the room")).FromUtf8());
+	RunRoomAutomation();
+#endif
+}
+
+void GameController::RunRoomAutomation()
+{
+#ifdef TPT_GAME_MULTIPLAYER
+	auto *automation = roomAutomation.get();
+	if (!automation || !room)
+		return;
+	auto now = Platform::GetTime() / 1000.0 - automation->began;
+	if (automation->log.is_open() && now >= automation->nextLog)
+	{
+		auto sample = room->Sample();
+		sample["elapsedSeconds"] = now;
+		sample["showingRoom"] = showRoom;
+		sample["shownIsRoomWorld"] = showRoom && room->Synchronized() && gameModel->GetSimulation() == room->Shown();
+		sample["shownParts"] = gameModel->GetSimulation()->NUM_PARTS;
+		sample["ownParts"] = gameModel->GetLocalSimulation()->NUM_PARTS;
+		sample["lastNotice"] = lastRoomNotice.ToUtf8();
+		sample["editLatencyMs"] = Json::Value(Json::arrayValue);
+		for (auto ms : room->TakeEditLatencies())
+			sample["editLatencyMs"].append(ms);
+		automation->log << multiplayer::JsonText(sample) << std::endl;
+		automation->nextLog = now + 1;
+	}
+	while (automation->next < automation->steps.size() && automation->steps[automation->next]["at"].asDouble() <= now)
+	{
+		auto &step = automation->steps[automation->next++];
+		auto act = step["do"].asString();
+		ui::Point a{ step["x1"].asInt(), step["y1"].asInt() }, b{ step["x2"].asInt(), step["y2"].asInt() };
+		if (act == "tool") SetActiveTool(0, ByteString(step["tool"].asString()));
+		else if (act == "brush")
+		{
+			gameModel->SetBrushID(step["id"].asInt());
+			SetBrushSize({ step["rx"].asInt(), step["ry"].asInt() });
+		}
+		else if (act == "points") DrawPoints(0, a, b, step["held"].asBool());
+		else if (act == "line") DrawLine(0, a, b);
+		else if (act == "rect") DrawRect(0, a, b);
+		else if (act == "fill") DrawFill(0, a);
+		else if (act == "toggle") ToggleRoom();
+		else if (act == "pause") SetPaused(step["paused"].asBool());
+		else if (act == "step") FrameStep();
+		else if (act == "clear") ClearSim();
+		else if (act == "local") ResetAir();
+		else if (act == "quit")
+		{
+			if (automation->log.is_open())
+			{
+				auto sample = room->Sample();
+				sample["final"] = true;
+				sample["showingRoom"] = showRoom;
+				sample["lastNotice"] = lastRoomNotice.ToUtf8();
+				sample["ownParts"] = gameModel->GetLocalSimulation()->NUM_PARTS;
+				automation->log << multiplayer::JsonText(sample) << std::endl;
+			}
+			ui::Engine::Ref().Exit();
+		}
+	}
+#endif
 }

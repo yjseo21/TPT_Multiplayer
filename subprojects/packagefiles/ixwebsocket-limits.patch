@@ -1,0 +1,24 @@
+--- a/ixwebsocket/IXWebSocketTransport.cpp
++++ b/ixwebsocket/IXWebSocketTransport.cpp
+@@ -544,6 +544,21 @@
+                 return;
+             }
+ 
++            // TPT transport limit: bound a message before allocating its payload,
++            // including fragmented messages. Per-message deflate is disabled by TPT.
++            if (ws.N > 32ULL * 1024 * 1024)
++            {
++                close(1009, "TPT frame size limit");
++                return;
++            }
++            uint64_t messageBytes = ws.N;
++            for (const auto& chunk : _chunks) messageBytes += chunk.size();
++            if (messageBytes > 32ULL * 1024 * 1024 || _chunks.size() >= 1024)
++            {
++                close(1009, "TPT message size limit");
++                return;
++            }
++
+             if (ws.mask)
+             {
+                 ws.masking_key[0] = ((uint8_t) data[i + 0]) << 0;

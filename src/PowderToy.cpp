@@ -502,6 +502,13 @@ int Main(int argc, char *argv[])
 	engine.ShowWindow(gameController->GetView());
 	gameController->InitCommandInterface();
 
+	auto joinArg = arguments["join"];
+	if (joinArg.has_value())
+	{
+		auto nameArg = arguments["name"];
+		gameController->JoinRoom(joinArg.value(), nameArg.has_value() ? nameArg.value() : ByteString("Player"));
+	}
+
 	auto openArg = arguments["open"];
 	if (openArg.has_value())
 	{

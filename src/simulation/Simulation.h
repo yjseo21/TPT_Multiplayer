@@ -77,6 +77,12 @@ public:
 	int Alloc();
 	void Flatten();
 
+	// Diagnostic access for deterministic replay; does not mutate the allocator.
+	int FreeHead() const { return pfree; }
+	// Exact multiplayer checkpoint: restore the original free-list order, not
+	// the order reconstructed by RecalcFreeParticles().
+	void RestoreExactFreeList(int head, int activeCount);
+
 	bool MaxPartsReached() const
 	{
 		return pfree == -1 && active >= NPART;

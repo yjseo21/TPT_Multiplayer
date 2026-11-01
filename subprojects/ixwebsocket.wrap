@@ -1,0 +1,7 @@
+[wrap-git]
+url = https://github.com/machinezone/IXWebSocket.git
+revision = 0ec87b6f6caf8fab32b85e4324bd1b225821ed09
+depth = 1
+directory = ixwebsocket
+patch_directory = ixwebsocket
+diff_files = ixwebsocket-limits.patch

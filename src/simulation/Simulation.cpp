@@ -20,6 +20,7 @@
 #include <iostream>
 #include <numbers>
 #include <set>
+#include <stdexcept>
 
 namespace
 {
@@ -1011,6 +1012,28 @@ void Parts::Reset()
 	memset(data.data(), 0, sizeof(Particle)*NPART);
 	active = 0;
 	pfree = -1;
+}
+
+void Parts::RestoreExactFreeList(int head, int activeCount)
+{
+    if (activeCount < 0 || activeCount > NPART || head < -1 || head >= activeCount)
+        throw std::invalid_argument("invalid exact checkpoint particle allocator");
+    // Only free slots belong in the free list. Cycles and orphan free slots
+    // would otherwise silently alter future particle allocation behavior.
+    std::vector<bool> visited(activeCount, false);
+    int count = 0;
+    for (int i = head; i != -1; i = data[i].life)
+    {
+        if (i < 0 || i >= activeCount || data[i].type != PT_NONE || visited[i])
+            throw std::invalid_argument("invalid exact checkpoint free-list chain");
+        visited[i] = true;
+        ++count;
+    }
+    for (int i = 0; i < activeCount; ++i)
+        if ((data[i].type == PT_NONE) != visited[i])
+            throw std::invalid_argument("incomplete exact checkpoint free-list chain");
+    active = activeCount;
+    pfree = head;
 }
 
 void Simulation::clear_sim(void)

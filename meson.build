@@ -367,8 +367,10 @@ copied_dlls = []
 if host_platform == 'windows'
 	windows_xp = host_arch == 'x86' and host_libc == 'mingw'
 	args_ccomp_win = []
+	# Windows 7 API level on non-XP targets: GCC's win32 thread model only
+	# provides std::condition_variable at 0x0600 or later.
 	defs_ccomp_win = [
-		'_WIN32_WINNT=0x0501',
+		windows_xp ? '_WIN32_WINNT=0x0501' : '_WIN32_WINNT=0x0601',
 		'NOMINMAX',
 		'UNICODE',
 		'_UNICODE',
@@ -500,6 +502,11 @@ endif
 
 clang_tidy_sources = []
 
+# Multiplayer inside the game (rooms on a dedicated server).
+if get_option('build_multiplayer')
+	project_cpp_args += [ '-DTPT_GAME_MULTIPLAYER' ]
+endif
+
 sta_libs = {}
 foreach sta_info : [
 	[ 'common', common_files, [
@@ -537,7 +544,14 @@ foreach sta_info : [
 	clang_tidy_sources += sta_srcs
 endforeach
 
+if get_option('build_multiplayer')
+	subdir('src/multiplayer/net')
+endif
+
 if get_option('build_powder')
+	if get_option('build_multiplayer')
+		powder_deps += mp_game_dep
+	endif
 	powder_deps += project_deps + [
 		threads_dep,
 		lua_dep,
@@ -602,6 +616,10 @@ if get_option('build_render')
 		override_options: target_options,
 	)
 	clang_tidy_sources += render_files
+endif
+
+if get_option('build_multiplayer')
+	subdir('src/multiplayer')
 endif
 
 if get_option('build_font')

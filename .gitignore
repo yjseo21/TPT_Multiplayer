@@ -12,6 +12,7 @@
 .DS_Store
 
 # Build files
+/multiplayer-data/
 build*/*
 *.o
 *.exe
@@ -93,3 +94,6 @@ screenshot_*
 /font/
 compile_commands.json
 ignore/
+!tests/multiplayer/*.py
+!tools/multiplayer/*.py
+!tools/multiplayer/*.sh

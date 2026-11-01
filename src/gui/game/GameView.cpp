@@ -2577,6 +2577,8 @@ void GameView::OnDraw()
 			fpsInfo << " [GRID: " << rendererSettings->gridSize << "]";
 		if (rendererSettings->findingElement)
 			fpsInfo << " [FIND]";
+		if (roomStatus.size())
+			fpsInfo << "\n" << roomStatus;
 		if (c->GetDebugFlags() & DEBUG_SIMHUD)
 		{
 			fpsInfo << "\nSimulation";

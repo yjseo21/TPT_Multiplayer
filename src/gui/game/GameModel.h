@@ -69,6 +69,9 @@ private:
 	void InitTools();
 
 	std::unique_ptr<Simulation> sim;
+	// A room's world, shown instead of the player's own (sim stays untouched).
+	Simulation *shownSim = nullptr;
+	std::optional<bool> roomPaused;
 	bool paused = false;
 	int queuedFrames = 0;
 	Renderer * ren;
@@ -278,6 +281,11 @@ public:
 	const std::optional<User> &GetUser() const;
 	void SetUser(std::optional<User> user);
 	Simulation * GetSimulation();
+	// The player's own world, whether or not a room's world is shown.
+	Simulation * GetLocalSimulation() { return sim.get(); }
+	// Show another world (a room's), or the player's own again with nullptr.
+	void ShowSimulation(Simulation *shown, std::optional<bool> shownPaused);
+	bool ShowingRoom() const { return shownSim != nullptr; }
 	Renderer * GetRenderer();
 	RendererSettings &GetRendererSettings()
 	{
@@ -348,7 +356,7 @@ public:
 	}
 	bool IsSimRunning() const
 	{
-		return !paused || queuedFrames;
+		return !GetPaused() || queuedFrames;
 	}
 
 	std::unique_ptr<FrameTime> frameTime;
