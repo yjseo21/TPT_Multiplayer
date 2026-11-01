@@ -126,9 +126,12 @@ def scenario_four_players():
             assert max(r["receiveMbps"] for r in watcher[2:]) < 0.5, [r["receiveMbps"] for r in watcher]
             # Seal batching: far fewer seal messages than physics ticks while running.
             running = [r for r in watcher if r.get("status") in ("LOCAL SIM", "SERVER SLOW") and "localTick" in r]
-            ticks = running[-1]["localTick"] - running[0]["localTick"]
+            # Seals per second, not per tick: a slow server (about 20 ticks/s on some CI
+            # machines) leaves nothing to merge. 50 ms batches allow about 20/s plus
+            # fingerprint seals; unbatched would be about one per tick (60/s).
+            seconds = running[-1]["elapsedSeconds"] - running[0]["elapsedSeconds"]
             seals = running[-1]["seals"] - running[0]["seals"]
-            assert ticks >= 30 and seals < ticks * 0.4, (ticks, seals, [(r.get("status"), r.get("localTick"), r.get("seals")) for r in watcher])
+            assert seconds >= 1 and seals / seconds < 30, (seconds, seals, [(r.get("status"), r.get("localTick"), r.get("seals")) for r in watcher])
             # Own edits reach the local world quickly: loopback, so nearly all of it is overhead.
             editor = rows(root / "local-editor.jsonl")
             latency = sorted(ms for r in editor for ms in r.get("editLatencyMs", []))

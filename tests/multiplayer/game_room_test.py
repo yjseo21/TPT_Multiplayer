@@ -86,8 +86,12 @@ def main():
             time.sleep(1)
             (root / "steps.jsonl").write_text("".join(json.dumps(s) + "\n" for s in STEPS))
             game_dir = root / "game"; game_dir.mkdir()
+            # Not a first run: otherwise the game opens a modal install prompt on its
+            # first tick, which a headless test cannot answer.
+            (game_dir / "powder.pref").write_text("{}")
             game_env = dict(env, TPT_MP_AUTOMATION=str(root / "steps.jsonl"), TPT_MP_AUTOMATION_LOG=str(root / "game.jsonl"))
-            command = [GAME, f"join:ws://127.0.0.1:{port}", "name:Game"]
+            # Own data directory: hermetic, and never a real player's preferences.
+            command = [GAME, f"ddir:{game_dir}", f"join:ws://127.0.0.1:{port}", "name:Game"]
             # SDL's dummy video driver can stop the game's frame loop after one frame
             # (seen on CI and on Windows). Without a display, use a virtual X server.
             if not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY") and shutil.which("xvfb-run"):
@@ -138,10 +142,4 @@ def main():
 
 
 if __name__ == "__main__":
-    # The Windows build of the game stops after its first frame under SDL's
-    # headless drivers (dummy and offscreen), with or without a room, so it can
-    # only be tested with a real window. macOS headless is not verified yet.
-    if not sys.platform.startswith("linux"):
-        print("SKIP: the headless real-game test runs on Linux only (see LATENCY / P3 notes)")
-        sys.exit(77)
     main()
