@@ -28,7 +28,8 @@ with tempfile.TemporaryDirectory(prefix='tpt-4-player-') as directory:
     env = dict(os.environ, TPT_ROOM_TOKEN='room-test', TPT_ADMIN_TOKEN='admin-test')
     serverlog = (root/'server.log').open('w+')
     server = subprocess.Popen([SERVER, '--port', str(port), '--seed', '4132', '--run-for', '25', '--tick-rate', '30'],
-                              cwd=root, env=env, stdout=serverlog, stderr=subprocess.STDOUT)
+                              cwd=root, env=env, stdout=serverlog, stderr=subprocess.STDOUT,
+                              creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0)  # CTRL_BREAK on Windows
     replicas=[]
     editor=None
     try:
@@ -70,7 +71,7 @@ with tempfile.TemporaryDirectory(prefix='tpt-4-player-') as directory:
             if r.poll() is None:r.kill()
             r.wait()
         if server.poll() is None:
-            server.send_signal(signal.SIGINT)
+            server.send_signal(signal.CTRL_BREAK_EVENT if os.name == 'nt' else signal.SIGINT)
             try:server.wait(timeout=6)
             except subprocess.TimeoutExpired:server.kill();server.wait()
         serverlog.close()

@@ -90,7 +90,13 @@ def main():
             game = subprocess.Popen([GAME, f"join:ws://127.0.0.1:{port}", "name:Game"], cwd=game_dir, env=game_env,
                                     stdout=(root / "game.out").open("w"), stderr=subprocess.STDOUT)
             procs.append(game)
-            game.wait(timeout=40)
+            try:
+                game.wait(timeout=40)
+            except subprocess.TimeoutExpired:
+                game.kill(); game.wait()
+                log_rows = (root / "game.jsonl").read_text().splitlines() if (root / "game.jsonl").exists() else []
+                raise AssertionError("the game did not finish its script:\n" + (root / "game.out").read_text()[-3000:]
+                                     + "\nlast status: " + (log_rows[-1][:1500] if log_rows else "(none)"))
             output = (root / "game.out").read_text()
             assert game.returncode == 0, output
             watcher.wait(timeout=30)

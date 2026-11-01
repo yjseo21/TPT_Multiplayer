@@ -34,7 +34,9 @@ def run_case(paused):
         args = [SERVER, "--port", str(port), "--seed", "9001", "--run-for", "30", "--tick-rate", "30"]
         if paused:
             args.append("--paused")
-        server = subprocess.Popen(args, cwd=root, env=env, stdout=log, stderr=subprocess.STDOUT)
+        # Own process group on Windows, so it can receive CTRL_BREAK (handled as SIGBREAK).
+        server = subprocess.Popen(args, cwd=root, env=env, stdout=log, stderr=subprocess.STDOUT,
+                                  creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0)
         replica = None
         editor = None
         try:
@@ -89,7 +91,7 @@ def run_case(paused):
                 replica.kill()
                 replica.wait()
             if server.poll() is None:
-                server.send_signal(signal.SIGINT)
+                server.send_signal(signal.CTRL_BREAK_EVENT if os.name == 'nt' else signal.SIGINT)
                 try:
                     server.wait(timeout=6)
                 except subprocess.TimeoutExpired:
