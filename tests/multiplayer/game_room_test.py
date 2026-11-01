@@ -9,7 +9,7 @@ edits; the game's own canvas must keep its own drawing.
 
 Usage: game_room_test.py TPT_SERVER TPT_REMOTE POWDER
 """
-import json, os, socket, subprocess, sys, tempfile, time
+import json, os, shutil, socket, subprocess, sys, tempfile, time
 from pathlib import Path
 
 SERVER, CLIENT, GAME = (str(Path(p).resolve()) for p in sys.argv[1:4])
@@ -87,7 +87,13 @@ def main():
             (root / "steps.jsonl").write_text("".join(json.dumps(s) + "\n" for s in STEPS))
             game_dir = root / "game"; game_dir.mkdir()
             game_env = dict(env, TPT_MP_AUTOMATION=str(root / "steps.jsonl"), TPT_MP_AUTOMATION_LOG=str(root / "game.jsonl"))
-            game = subprocess.Popen([GAME, f"join:ws://127.0.0.1:{port}", "name:Game"], cwd=game_dir, env=game_env,
+            command = [GAME, f"join:ws://127.0.0.1:{port}", "name:Game"]
+            # SDL's dummy video driver can stop the game's frame loop after one frame
+            # (seen on CI and on Windows). Without a display, use a virtual X server.
+            if not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY") and shutil.which("xvfb-run"):
+                command = ["xvfb-run", "-a", "-s", "-screen 0 1280x1024x24"] + command
+                game_env.pop("SDL_VIDEODRIVER")
+            game = subprocess.Popen(command, cwd=game_dir, env=game_env,
                                     stdout=(root / "game.out").open("w"), stderr=subprocess.STDOUT)
             procs.append(game)
             try:
