@@ -86,7 +86,7 @@ Some things remain local in rooms:
 - The `paste` command then commits with the save inside it, so every player
   loads the same bytes with `Simulation::Load`, at a position in cells.
 - Limits:
-  - 160 KB of save file per paste;
+  - 224 KB of save file per paste;
   - ordered server messages up to 320 KB;
   - client-to-server messages are still 4 KB, so the upload goes in chunks.
 - Holding Shift while placing leaves out pressure, as in single-player.

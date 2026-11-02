@@ -1,0 +1,76 @@
+# TPT Multiplayer room server, sandboxed.
+#
+# Install (as root):
+#   install -m 755 tpt-server /usr/local/bin/tpt-server
+#   install -m 644 tpt-server.service /etc/systemd/system/tpt-server.service
+#   install -m 600 /dev/null /etc/tpt-server.env
+#   (edit /etc/tpt-server.env: TPT_ROOM_TOKEN=... and TPT_ADMIN_TOKEN=..., one per line)
+#   systemctl daemon-reload && systemctl enable --now tpt-server
+#   ufw allow 34403/tcp        (or your firewall's equivalent; open nothing else)
+#
+# The server runs as a throwaway user that systemd creates for it (DynamicUser):
+# it owns nothing on this computer and can read none of your files. It may write
+# only to its own state directory (/var/lib/tpt-server, for autosaves). It has no
+# privileges, cannot gain any, and may use only plain network sockets and the
+# system calls an ordinary network service needs. Even a bug in it could reach
+# no further than this sandbox.
+
+[Unit]
+Description=TPT Multiplayer room
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/tpt-server.env
+ExecStart=/usr/local/bin/tpt-server --port 34403 --autosave-dir /var/lib/tpt-server/autosaves --recover
+Restart=on-failure
+RestartSec=5
+
+# Identity and files: a fresh unprivileged user, a read-only system, no homes.
+DynamicUser=yes
+StateDirectory=tpt-server
+WorkingDirectory=/var/lib/tpt-server
+UMask=0077
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+DevicePolicy=closed
+
+# No privileges, ever.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+MemoryDenyWriteExecute=yes
+RemoveIPC=yes
+
+# Kernel and the rest of the system: out of reach.
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+
+# Only internet sockets, and only the system calls a network service needs.
+RestrictAddressFamilies=AF_INET AF_INET6
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+SystemCallErrorNumber=EPERM
+
+# Bounded resources: a misbehaving room cannot starve this computer.
+MemoryMax=2G
+TasksMax=128
+LimitNOFILE=1024
+CPUQuota=200%
+
+[Install]
+WantedBy=multi-user.target

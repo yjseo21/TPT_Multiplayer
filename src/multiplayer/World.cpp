@@ -130,6 +130,11 @@ void ApplyReset(Simulation &sim, const std::string &what)
     else if (what == "invertAir") sim.air->Invert();
 }
 }
+void CheckPastedSave(const Command &paste)
+{
+    auto bytes = Base64Decode(paste.text);
+    GameSave save(std::vector<char>(bytes.begin(), bytes.end()), false);
+}
 void ApplySettings(Simulation &sim, const SimulationSettingsChange &s)
 {
     if (s.heat) sim.legacy_enable = !*s.heat;

@@ -29,6 +29,14 @@ mp_tests = executable('multiplayer-tests', '../../tests/multiplayer/CoreTests.cp
   dependencies: mp_core, cpp_args: project_cpp_args + mp_codec_args, link_args: mp_link_args,
   override_options: target_options)
 test('multiplayer-core', mp_tests, timeout: 60)
+mp_paste_fuzz = executable('tpt-paste-fuzz', '../../tests/multiplayer/PasteFuzzTests.cpp',
+  dependencies: mp_core, cpp_args: project_cpp_args + mp_codec_args, link_args: mp_link_args,
+  override_options: target_options)
+test('multiplayer-paste-fuzz', mp_paste_fuzz, timeout: 300)
+mp_element_sweep = executable('tpt-element-sweep', '../../tests/multiplayer/ElementSweepTests.cpp',
+  dependencies: mp_core, cpp_args: project_cpp_args + mp_codec_args, link_args: mp_link_args,
+  override_options: target_options)
+test('multiplayer-element-sweep', mp_element_sweep, timeout: 600)
 mp_checkpoint_tests = executable('tpt-checkpoint-tests', '../../tests/multiplayer/CheckpointTests.cpp',
   dependencies: mp_core, cpp_args: project_cpp_args + mp_codec_args, link_args: mp_link_args,
   override_options: target_options)
@@ -93,6 +101,18 @@ test('multiplayer-local-client', python3_prog,
   args: [files('../../tests/multiplayer/local_client_test.py'), mp_server, mp_client],
   timeout: 120, is_parallel: false)
 
+test('multiplayer-room-sweep', python3_prog,
+  args: [files('../../tests/multiplayer/room_sweep_test.py'), mp_server, mp_client],
+  timeout: 150, is_parallel: false)
+
+test('multiplayer-hostile-input', python3_prog,
+  args: [files('../../tests/multiplayer/hostile_input_test.py'), mp_server, mp_client],
+  timeout: 120, is_parallel: false)
+
+test('multiplayer-fuzz-room', python3_prog,
+  args: [files('../../tests/multiplayer/fuzz_room_test.py'), mp_server, mp_client],
+  timeout: 150, is_parallel: false)
+
 test('multiplayer-gravity-room', python3_prog,
   args: [files('../../tests/multiplayer/gravity_room_test.py'), mp_server, mp_client],
   timeout: 90, is_parallel: false)
@@ -111,5 +131,9 @@ test('multiplayer-import-seed', mp_import_seed_tests, timeout: 10)
 if get_option('build_powder')
   test('multiplayer-game-room', python3_prog,
     args: [files('../../tests/multiplayer/game_room_test.py'), mp_server, mp_client, powder_exe],
+    timeout: 90, is_parallel: false)
+  # Two real games: A pastes a bunker from its own canvas, B pastes a snow bomb onto it.
+  test('multiplayer-bunker-bomb', python3_prog,
+    args: [files('../../tests/multiplayer/bunker_bomb_test.py'), mp_server, mp_client, powder_exe],
     timeout: 90, is_parallel: false)
 endif

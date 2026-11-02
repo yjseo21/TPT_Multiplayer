@@ -53,6 +53,7 @@ void Peer::Start()
                 else if (!controls.empty())
                 {
                     control = std::move(controls.front()); controls.pop_front();
+                    queuedBytes -= controlBytes.front(); controlBytes.pop_front();
                     if (control["type"] == "checkpoint_begin") source = std::move(checkpointSource);
                 }
                 else if (!presence.isNull()) { control = std::move(presence); presence = Json::Value(); }

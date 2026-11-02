@@ -307,6 +307,7 @@ void Room::QueueRequest(const std::shared_ptr<Peer> &p, const Json::Value &v, ui
             withSave.removeMember("upload");
             p->pasteSave.clear(); p->pasteId = 0;
             request.command = ParseCommand(withSave, p->admin);
+            CheckPastedSave(request.command);
         }
         else request.command = ParseCommand(v, p->admin);
         // A player only ever steers their own stickman.
@@ -375,7 +376,14 @@ void Room::Commit(const Command &command, uint32_t actor, const std::vector<std:
             world.revision, world.resetGeneration);
         if (journal) journal->Edit(stamp, actor, command);
     }
-    catch (...) { failed = true; throw; } // Fail closed after an unjournaled mutation.
+    catch (const std::exception &e)
+    {
+        // Fail closed after an unjournaled mutation, and say why.
+        failed = true;
+        std::cerr << "Room stopped: an applied command could not be recorded (" << e.what() << "): "
+                  << JsonText(RecordCommand(command)) .substr(0, 300) << std::endl;
+        throw;
+    }
     // The server has a total ordering even when multiple edits
     // are applied at the same (paused) simulation tick.
     Json::Value event;

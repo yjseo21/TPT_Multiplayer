@@ -15,8 +15,11 @@ constexpr size_t MaxFrameBytes = 32 * 1024 * 1024;
 constexpr size_t MaxCommandBytes = 4096;
 // A pasted save or stamp travels inside its command: at most this many bytes of
 // save file (base64 in JSON), uploaded in chunks, then committed to everyone.
-constexpr size_t MaxPasteBytes = 160 * 1024;
+constexpr size_t MaxPasteBytes = 224 * 1024; // base64 of this, in JSON, fits MaxOrderedBytes
 constexpr size_t MaxPasteChunkChars = 3000;
+// A pasted save may unpack to at most this much (a full-canvas save is a few MB;
+// the game itself accepts up to 200 MB, far too much for a server to unpack on request).
+constexpr size_t MaxPasteUnpackedBytes = 16U * 1024 * 1024;
 // Ordered server messages (commits) may carry a paste.
 constexpr size_t MaxOrderedBytes = 320 * 1024;
 // Bump with any change to the engine, serializer, or enabled elements.
@@ -79,6 +82,10 @@ Command ParseCommand(const Json::Value &json, bool admin);
 int DecorationMode(const std::string &identifier);
 // The "settings" member of a settings command: only the fields that are set.
 Json::Value SettingsJson(const SimulationSettingsChange &settings);
+// Parses a paste command's save fully (throws if it is not a valid save). The
+// server calls this on the sender's connection, so a broken save never reaches
+// the room, and the room's own thread never spends time on a bad one.
+void CheckPastedSave(const Command &paste);
 // Brush-cell operations: one tool command, and a player's sustained rate (and burst).
 constexpr unsigned ToolCommandCostLimit = 1000000;
 constexpr double EditWorkPerSecond = 3000000;

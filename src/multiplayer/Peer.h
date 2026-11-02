@@ -88,6 +88,16 @@ struct Peer
     std::mutex mutex;
     std::condition_variable changed;
     std::deque<Json::Value> controls;
+    // Bytes queued in controls, roughly: a player who stops reading while others
+    // paste large saves is dropped before the queue can exhaust the server's memory.
+    std::deque<size_t> controlBytes;
+    size_t queuedBytes = 0;
+    static constexpr size_t MaxQueuedBytes = 64U * 1024 * 1024;
+    static size_t ApproximateBytes(const Json::Value &value)
+    {
+        const auto &save = value["command"]["save"];
+        return 256 + (save.isString() ? save.asString().size() : 0);
+    }
     // Sender-thread-only snapshot transfer. Owner thread publishes immutable bytes
     // and queues a checkpoint_begin marker under the same mutex. Commits and
     // tick seals queue behind it, in strict WebSocket ordering.
@@ -131,7 +141,7 @@ struct Peer
         begin["tick"] = Json::UInt64(tick); begin["revision"] = Json::UInt64(revision);
         begin["resetGeneration"] = Json::UInt64(resetGeneration);
         begin["paused"] = paused;
-        controls.push_back(begin); changed.notify_one();
+        controls.push_back(begin); controlBytes.push_back(256); queuedBytes += 256; changed.notify_one();
     }
     void Text(Json::Value value)
     {
@@ -165,9 +175,10 @@ struct Peer
         {
             controls.back() = std::move(value); changed.notify_one(); return;
         }
-        if (controls.size() >= (replica ? 2048U : 32U))
+        auto bytes = ApproximateBytes(value);
+        if (controls.size() >= (replica ? 2048U : 32U) || queuedBytes + bytes > MaxQueuedBytes)
         { closed = true; changed.notify_one(); return; }
-        controls.push_back(std::move(value)); changed.notify_one();
+        controls.push_back(std::move(value)); controlBytes.push_back(bytes); queuedBytes += bytes; changed.notify_one();
     }
     void Publish(std::shared_ptr<const CanvasFrame> frame)
     {

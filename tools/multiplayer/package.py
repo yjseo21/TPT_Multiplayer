@@ -32,8 +32,11 @@ def main():
         f"tpt-server{exe}": build / "src" / "multiplayer" / f"tpt-server{exe}",
         f"tpt-remote{exe}": build / "src" / "multiplayer" / f"tpt-remote{exe}",
         "README.multiplayer.md": repo / "README.multiplayer.md",
+        "HOSTING_SECURITY.md": repo / "docs" / "multiplayer" / "HOSTING_SECURITY.md",
         "LICENSE": repo / "LICENSE",
     }
+    if sys.platform.startswith("linux"):
+        files["tpt-server.service"] = repo / "packaging" / "multiplayer" / "tpt-server.service"
     missing = [str(path) for path in files.values() if not path.is_file()]
     if missing:
         sys.exit("missing build outputs: " + ", ".join(missing))
@@ -44,7 +47,7 @@ def main():
     staging = Path(tempfile.mkdtemp(prefix="tpt-package-"))
     strip = shutil.which("strip") if sys.platform != "win32" else None
     for name, path in list(files.items()):
-        if strip and not name.endswith((".md", "LICENSE")):
+        if strip and not name.endswith((".md", "LICENSE", ".service")):
             copy = staging / name
             shutil.copy2(path, copy)
             subprocess.run([strip, "-S" if sys.platform == "darwin" else "--strip-unneeded", str(copy)], check=True)

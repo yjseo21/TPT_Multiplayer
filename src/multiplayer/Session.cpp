@@ -384,12 +384,13 @@ void Session::Pump()
         // extra tick per frame, so the edit shows as soon as its tick is sealed.
         // Bounded: a heavy world never runs more than two steps in one frame.
         if (!sentAt.empty() && steps < backlog) steps = std::min<uint64_t>(backlog, std::max<uint64_t>(steps, 2));
-        // Local physics per frame: at most three quarters of the time since the
-        // last frame (at least CatchUpBudget, and always one tick when due). A
-        // computer that cannot keep up stays responsive and falls behind visibly
-        // instead of freezing ever longer on catch-up; one that merely draws few
-        // frames a second still keeps up.
-        auto budget = std::max(CatchUpBudget, .75*dt);
+        // Local physics per frame: three quarters of the time since the last frame
+        // while keeping pace, so drawing stays smooth; all of it while behind, as a
+        // heavy world in single-player trades frames for physics. Always at least
+        // CatchUpBudget and one tick when due, and never more than a quarter second
+        // (dt is clamped): a computer that cannot keep up stays responsive and
+        // falls behind visibly instead of freezing ever longer on catch-up.
+        auto budget = std::max(CatchUpBudget, (backlog > lead + 2 ? 1. : .75)*dt);
         uint64_t ran = 0;
         if (!steps) replica->Pump(0); // edits and seals at the current tick
         while (ran < steps)

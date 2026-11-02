@@ -91,6 +91,7 @@ def scenario_four_players():
             write_script(root / "video-edits.jsonl", [
                 dict(op="brush", x1=300, y1=120, x2=400, y2=140, radius=4, element=1),   # dust
                 dict(op="brush", x1=330, y1=60, x2=360, y2=60, radius=3, element=3),     # oil (fire glow uses renderer-local randomness)
+                dict(op="wait", seconds=1.5),  # let the room run a moment (particles still on screen) before the pause
                 dict(op="pause", paused=True),
             ])
             procs.append(client(root, port, "LocalEditor", "--local-sim", "--run-for", "14", "--no-reconnect",

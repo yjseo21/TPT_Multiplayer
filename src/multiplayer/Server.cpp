@@ -156,7 +156,9 @@ int main(int argc, char **argv)
         config.sealBatchMs = options.sealBatchMs; config.autosaveInterval = options.autosaveInterval;
         // The room outlives the server and its callbacks, including during exception unwinding.
         Room room(config, world, autosaves.get(), journal.get());
-        ix::WebSocketServer server(options.port, options.bind, 8, 8, 5,
+        // Up to 32 connections (4 players, the rest waiting or being turned away):
+        // a few idle or hostile sockets must not keep players out.
+        ix::WebSocketServer server(options.port, options.bind, 32, 32, 5,
             ix::SocketServer::kDefaultAddressFamily, 20, 1);
         server.disablePerMessageDeflate();
         if (!options.cert.empty())

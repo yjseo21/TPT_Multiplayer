@@ -505,6 +505,18 @@ int main()
                     Check(Base64Decode(Base64Encode(bytes.substr(0, n))) == bytes.substr(0, n), "base64 round-trips bytes");
                 paste["save"] = "not base64!";
                 Reject([&] { ParseCommand(paste, false); });
+                // Only game saves, and only ones that state a bounded unpacked size.
+                paste["save"] = Base64Encode(std::string("PSv        abc", 15));
+                Reject([&] { ParseCommand(paste, false); });
+                auto oversized = std::string(data.data(), data.size());
+                oversized[8] = oversized[9] = oversized[10] = char(0xFF); oversized[11] = 0x7F;
+                paste["save"] = Base64Encode(oversized);
+                Reject([&] { ParseCommand(paste, false); });
+                // A save whose header is fine but whose contents are not is caught before the room.
+                auto corrupt = std::string(data.data(), data.size());
+                for (size_t i = 12; i < corrupt.size(); i += 7) corrupt[i] = char(corrupt[i] ^ 0x5A);
+                paste["save"] = Base64Encode(corrupt);
+                Reject([&] { CheckPastedSave(ParseCommand(paste, false)); });
                 paste["save"] = std::string((MaxPasteBytes+2)/3*4 + 4, 'A');
                 Reject([&] { ParseCommand(paste, false); });
             }

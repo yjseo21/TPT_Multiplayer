@@ -27,8 +27,24 @@ Engineering notes: `docs/multiplayer/`.
   can't keep up shows TOO SLOW and jumps ahead.
 - **Security:** limits on password guessing, constant-time password checks,
   per-player edit budgets, and size limits on every message.
-- **CI** on Windows, macOS (Apple Silicon and Intel) and Linux. A tag
-  `mp-v<version>` publishes release zips.
+- **Rooms without a certificate:** `host:port` joins a plain room, like a
+  Minecraft server. The game notes that the connection isn't encrypted.
+- **Hosting securely:** a sandboxed systemd service
+  (`packaging/multiplayer/tpt-server.service`). It runs as a throwaway user
+  with no access to your files, with a system-call filter and resource
+  limits. `docs/multiplayer/HOSTING_SECURITY.md` explains it.
+- **Testing:**
+  - every element's snapshot completeness;
+  - every element, wall and tool over the network with two players;
+  - randomized rooms with two editors (32 seeds locally);
+  - hostile clients, about 20,000–30,000 messages per run;
+  - 4,000 corrupted pasted saves;
+  - two real games: a bunker and a snow bomb, each pasted from its own canvas.
+- **Memory safety:** the attack, fuzz and room tests ran clean under
+  AddressSanitizer and UndefinedBehaviorSanitizer.
+- **CI** on Windows, macOS (Apple Silicon and Intel) and Linux runs all of the
+  above except the sanitizer runs. A tag `mp-v<version>` publishes release
+  zips.
 
 ## Not done
 

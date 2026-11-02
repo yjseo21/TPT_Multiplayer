@@ -38,7 +38,13 @@ Json::Value ToolCatalog()
     auto append = [&](const auto &identifier, const auto &name) {
         Json::Value item; item["identifier"] = std::string(identifier); item["name"] = std::string(name); result.append(item);
     };
-    for (auto &e : SimulationData::CRef().elements) if (e.Enabled) append(e.Identifier, e.Name.ToUtf8());
+    auto &elements = SimulationData::CRef().elements;
+    for (int i = 0; i < PT_NUM; ++i)
+        if (elements[i].Enabled)
+        {
+            append(elements[i].Identifier, elements[i].Name.ToUtf8());
+            result[result.size() - 1]["element"] = i; // its number, as console commands take it
+        }
     for (auto &w : SimulationData::CRef().wtypes) append(w.identifier, w.name.ToUtf8());
     for (auto &t : GetTools()) append(t.Identifier, t.Name.ToUtf8());
     return result;

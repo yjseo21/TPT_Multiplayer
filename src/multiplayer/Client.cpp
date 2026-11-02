@@ -54,7 +54,7 @@ Options Arguments(int argc, char **argv)
                 "  [--headless --frames N --output image.png]\n"
                 "  [--run-for SECONDS --metrics measurements.jsonl --output-hud display.png]\n"
                 "  [--view 0|1|2] [--no-reconnect] (otherwise retry transient failures)\n"
-                "  [--tool IDENTIFIER] [--list-tools] [--commands FILE.jsonl]\n"
+                "  [--tool IDENTIFIER] [--list-tools] [--commands FILE.jsonl] (a command per line; {\"op\":\"wait\",\"seconds\":S} pauses the script)\n"
                 "  [--local-sim] run physics locally from an exact checkpoint + ordered edits (no video stream)\n"
                 "1-9: DUST/WATR/STNE/FIRE/METL/SPRK/OIL/WOOD/erase; wheel: radius\n"
                 "Left drag: draw; right drag: erase; Space: pause; F: step; Ctrl+Backspace: clear\n"
@@ -107,7 +107,7 @@ Options Arguments(int argc, char **argv)
     if (!ix::UrlParser::parse(o.url, protocol, host, path, query, port) || (protocol != "ws" && protocol != "wss"))
         throw std::runtime_error("expected ws:// or wss:// URL");
     if (protocol == "ws" && host != "127.0.0.1" && host != "localhost" && host != "::1" && host != "[::1]")
-        throw std::runtime_error("remote servers require wss://");
+        std::cerr << "This room's connection is not encrypted: use a room password you use nowhere else.\n";
     return o;
 }
 constexpr int StatusHeight = 78;
@@ -189,7 +189,9 @@ int main(int argc, char **argv)
         auto catalog = ToolCatalog();
         if (options.listTools) { std::cout << JsonText(catalog) << '\n'; return 0; }
         if (!options.tool.empty()) FindTool(options.tool);
+        // Scripted commands and their editing cost, sent as the room's budget allows.
         std::deque<Json::Value> scriptedCommands;
+        std::deque<double> scriptedCosts;
         if (!options.commands.empty())
         {
             std::ifstream input(options.commands);
@@ -200,14 +202,23 @@ int main(int argc, char **argv)
                 if (line.empty()) continue;
                 if (scriptedCommands.size() >= 10000) throw std::runtime_error("too many scripted commands");
                 auto command = ParseJson(line); command["seq"] = Json::UInt64(1);
+                if (command["op"] == "wait")
+                {
+                    // Not sent: later commands wait this many seconds.
+                    if (!command["seconds"].isNumeric() || !(command["seconds"].asDouble() >= 0 && command["seconds"].asDouble() <= 3600))
+                        throw std::runtime_error("invalid scripted wait");
+                    command.removeMember("seq"); scriptedCommands.push_back(command); scriptedCosts.push_back(0);
+                    continue;
+                }
                 if (command["op"] == "admin")
                 {
                     if (command["action"] == "kick") Integer(command, "player", 1, INT32_MAX);
                     else if (command["action"] == "lock" && command["locked"].isBool()) {}
                     else throw std::runtime_error("invalid scripted administration action");
                 }
-                else ParseCommand(command, true);
-                command.removeMember("seq"); scriptedCommands.push_back(command);
+                double cost = 1;
+                if (command["op"] != "admin") cost = ParseCommand(command, true).Cost();
+                command.removeMember("seq"); scriptedCommands.push_back(command); scriptedCosts.push_back(cost);
             }
             if (!options.headless || !options.runFor || options.reconnect)
                 throw std::runtime_error("--commands requires --headless --run-for SECONDS --no-reconnect");
@@ -242,7 +253,9 @@ int main(int argc, char **argv)
         int selected = 0, radius = 4, received = 0, x = 100, y = 100, lastX = x, lastY = y;
         bool quit = false, drawing = false, erasing = false, strokePending = false, mouseInside = false;
         bool showStatus = true;
-        double nextMetrics = began+1, nextPanel = 0, nextScript = 0;
+        double nextMetrics = began+1, nextPanel = 0;
+        // Slightly under the room's per-player limits (operations and brush work per second).
+        double scriptOperations = 1, scriptWork = EditWorkPerSecond*.9, scriptRefill = began, scriptWaitUntil = 0;
         Json::Value sample;
         std::string selectedTool = options.tool;
         std::string strokeAction;
@@ -291,10 +304,24 @@ int main(int argc, char **argv)
                 if (display.window) SDL_UpdateTexture(display.texture, nullptr, video.data(), XRES * sizeof(pixel));
             }
             bool editable = session.Synchronized() && session.Picture().id;
-            if (editable && !scriptedCommands.empty() && !session.Edits().Pending() && MonotonicSeconds() >= nextScript)
+            if (editable && !scriptedCommands.empty())
             {
-                if (session.Send(scriptedCommands.front())) scriptedCommands.pop_front();
-                nextScript = MonotonicSeconds()+.7; // Allow one full-canvas operation per work-budget refill.
+                auto now = MonotonicSeconds();
+                scriptOperations = std::min(120*.9, scriptOperations + (now-scriptRefill)*120*.9);
+                scriptWork = std::min(EditWorkPerSecond*.9, scriptWork + (now-scriptRefill)*EditWorkPerSecond*.9);
+                scriptRefill = now;
+                if (!scriptedCommands.empty() && scriptedCommands.front()["op"] == "wait" && now >= scriptWaitUntil)
+                {
+                    scriptWaitUntil = now + scriptedCommands.front()["seconds"].asDouble();
+                    scriptedCommands.pop_front(); scriptedCosts.pop_front();
+                }
+                while (!scriptedCommands.empty() && now >= scriptWaitUntil && scriptedCommands.front()["op"] != "wait" &&
+                       session.Edits().Pending() < 32 && scriptOperations >= 1 && scriptWork >= scriptedCosts.front() &&
+                       session.Send(scriptedCommands.front()))
+                {
+                    scriptOperations -= 1; scriptWork -= scriptedCosts.front();
+                    scriptedCommands.pop_front(); scriptedCosts.pop_front();
+                }
             }
             sample = session.Sample();
             if (MonotonicSeconds() >= nextMetrics)

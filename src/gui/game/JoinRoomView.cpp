@@ -43,7 +43,7 @@ JoinRoomView::JoinRoomView(Request initial, String current, std::function<void (
 		y += 21;
 		return textbox;
 	};
-	auto *urlField = field("Address", initial.url.FromUtf8(), "[wss://host:port]", false);
+	auto *urlField = field("Address", initial.url.FromUtf8(), "[host:port, or wss://host:port]", false);
 	auto *nameField = field("Name", initial.name.FromUtf8(), "[your name]", false);
 	auto *tokenField = field("Password", initial.roomToken.FromUtf8(), "[if the room has one]", true);
 	auto *adminField = field("Admin key", initial.adminToken.FromUtf8(), "[if you host the room]", true);

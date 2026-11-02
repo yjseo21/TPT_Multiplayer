@@ -42,7 +42,10 @@ class WS:
         s.sendall((f"GET / HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nUpgrade: websocket\r\n"
                    f"Connection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n").encode())
         while b"\r\n\r\n" not in self.buffer:
-            self.buffer += s.recv(4096)
+            data = s.recv(4096)
+            if not data:
+                raise EOFError("connection closed during the handshake")
+            self.buffer += data
         header, self.buffer = self.buffer.split(b"\r\n\r\n", 1)
         assert b"101" in header.split(b"\r\n")[0], header
         accept = base64.b64encode(hashlib.sha1((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode()).digest())

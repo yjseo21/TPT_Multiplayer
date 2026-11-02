@@ -1956,7 +1956,8 @@ void GameController::CreateDebugInfo()
 // key (key: left/right/up/down, pressed), reset (what: as RoomReset), console (text),
 // decocolour (r, g, b, a), property (name, value: configures the property tool),
 // sign (text at x1, y1, as the sign window's OK), signbutton (presses every button sign),
-// paste (copies x1,y1-x2,y2 of the shown world, places it at x, y),
+// copy (x1,y1-x2,y2 of the shown world), place (what was copied, at x, y), nointro,
+// paste (copy, then place), mark (name; count: element names to count),
 // gravity / air / edge / aheat / newtonian (the mode shortcuts), options
 // (gravityMode, customGravityX: as the options dialog sets them),
 // dialog, dialogjoin / dialogcancel (Enter / Escape on it), mark (name: logs a
@@ -2122,17 +2123,21 @@ void GameController::JoinRoom(ByteString url, ByteString name, std::optional<Byt
 	url = trim(url);
 	if (!url.size())
 	{
-		gameModel->Log("Enter a room address, like wss://host:port.", false);
+		gameModel->Log("Enter a room address, like host:port.", false);
 		return;
 	}
+	// host:port joins a plain room, as hosts usually run one (no certificate);
+	// wss:// joins an encrypted one.
 	if (!url.Contains("://"))
-		url = "wss://" + url;
-	bool local = url.BeginsWith("ws://127.0.0.1") || url.BeginsWith("ws://localhost") || url.BeginsWith("ws://[::1]");
-	if (!url.BeginsWith("wss://") && !local)
+		url = "ws://" + url;
+	if (!url.BeginsWith("ws://") && !url.BeginsWith("wss://"))
 	{
-		gameModel->Log("Rooms on other computers need a wss:// address.", false);
+		gameModel->Log("A room address looks like host:port, or wss://host:port for an encrypted room.", false);
 		return;
 	}
+	bool local = url.BeginsWith("ws://127.0.0.1") || url.BeginsWith("ws://localhost") || url.BeginsWith("ws://[::1]");
+	if (url.BeginsWith("ws://") && !local)
+		gameModel->Log("This room's connection is not encrypted: use a room password you use nowhere else.", false);
 	if (room)
 		EndRoom("Left the room.");
 	multiplayer::SessionOptions options;
@@ -2485,16 +2490,18 @@ void GameController::RunRoomAutomation()
 		else if (act == "clear") ClearSim();
 		else if (act == "local") HistoryRestore(); // undo: refused in rooms
 		else if (act == "reset") RoomReset(ByteString(step["what"].asString()));
-		else if (act == "paste")
+		else if (act == "copy" || act == "paste")
 		{
-			// Copy a region, then place it: as the copy tool and a click would.
-			auto save = gameModel->GetSimulation()->Save(true, RectBetween(a, b));
-			if (save)
-			{
+			// The copy tool over a region of the shown world (the room's or the own);
+			// paste then also places it, as a click would.
+			if (auto save = gameModel->GetSimulation()->Save(true, RectBetween(a, b)))
 				gameModel->SetPlaceSave(std::move(save));
+			if (act == "paste")
 				PlaceSave({ step["x"].asInt() / CELL, step["y"].asInt() / CELL }); // saves are placed in cells
-			}
 		}
+		else if (act == "nointro") gameView->SkipIntroText();
+		else if (act == "place")
+			PlaceSave({ step["x"].asInt() / CELL, step["y"].asInt() / CELL }); // what was copied, perhaps on the other canvas
 		else if (act == "decocolour") SetColour(ui::Colour(step["r"].asInt(), step["g"].asInt(), step["b"].asInt(), step["a"].asInt()));
 		else if (act == "property")
 		{
@@ -2571,6 +2578,17 @@ void GameController::RunRoomAutomation()
 		{
 			auto sample = sampleRoom();
 			sample["mark"] = step["name"];
+			// "count": element identifiers to count in the shown world.
+			auto &sd = SimulationData::CRef();
+			auto *shown = gameModel->GetSimulation();
+			for (auto &identifier : step["count"])
+			{
+				int type = sd.GetParticleType(identifier.asString());
+				int n = 0;
+				for (int i = 0; type > 0 && i < NPART; ++i)
+					n += shown->parts[i].type == type;
+				sample["counts"][identifier.asString()] = n;
+			}
 			automation->log << multiplayer::JsonText(sample) << std::endl;
 		}
 		else if (act == "quit")
