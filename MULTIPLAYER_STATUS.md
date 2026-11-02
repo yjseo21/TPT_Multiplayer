@@ -9,8 +9,10 @@ Engineering notes: `docs/multiplayer/`.
   - exact snapshots when joining;
   - ordered edits and tick seals;
   - a sync check every second, with an automatic fresh copy on mismatch.
-- **Cross-platform agreement:** copies agree bit for bit across MSVC, GCC,
-  MinGW and Apple clang, on x86-64 and ARM.
+- **Cross-platform agreement:** physics is identical on Windows, macOS and
+  Linux, x86-64 and ARM. The game uses its own maths functions and strict
+  floating point, and CI checks a pinned fingerprint of a busy world and every
+  element on every platform.
 - **In the real game:**
   - a room dialog;
   - switching between the room and your own canvas;

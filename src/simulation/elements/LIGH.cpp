@@ -1,4 +1,5 @@
 #include "simulation/ElementCommon.h"
+#include "simulation/DeterministicMath.h"
 
 #include "graphics/Pixel.h"
 
@@ -178,14 +179,14 @@ static int update(UPDATE_FUNC_ARGS)
 	}
 	auto angle = float((parts[i].tmp + sim->rng.between(-30, 30)) % 360);
 	auto multipler = int(parts[i].life * 1.5) + sim->rng.between(0, parts[i].life);
-	auto rx = int(cos(angle * std::numbers::pi_v<float> / 180) * multipler);
-	auto ry = int(-sin(angle * std::numbers::pi_v<float> / 180) * multipler);
+	auto rx = int(dmath::cos(angle * std::numbers::pi_v<float> / 180) * multipler);
+	auto ry = int(-dmath::sin(angle * std::numbers::pi_v<float> / 180) * multipler);
 	create_line_par(sim, x, y, x+rx, y+ry, PT_LIGH, parts[i].temp, parts[i].life, int(angle), parts[i].tmp2, i);
 	if (parts[i].tmp2 == 2)// && pNear == -1)
 	{
 		auto angle2 = float(((int)angle + sim->rng.between(-100, 100)) % 360);
-		rx = int(cos(angle2 * std::numbers::pi_v<float> / 180) * multipler);
-		ry = int(-sin(angle2 * std::numbers::pi_v<float> / 180) * multipler);
+		rx = int(dmath::cos(angle2 * std::numbers::pi_v<float> / 180) * multipler);
+		ry = int(-dmath::sin(angle2 * std::numbers::pi_v<float> / 180) * multipler);
 		create_line_par(sim, x, y, x+rx, y+ry, PT_LIGH, parts[i].temp, parts[i].life, int(angle2), parts[i].tmp2, i);
 	}
 
@@ -328,9 +329,9 @@ static void create(ELEMENT_CREATE_FUNC_ARGS)
 		float angle = sim->rng.between(0, 6283) * 0.001f; //(in radians, between 0 and 2*pi)
 		gsize = sqrtf(gsize);
 		// randomness in weak gravity fields (more randomness with weaker fields)
-		gx += cosf(angle) * (0.04f - gsize);
-		gy += sinf(angle) * (0.04f - gsize);
+		gx += dmath::cosf(angle) * (0.04f - gsize);
+		gy += dmath::sinf(angle) * (0.04f - gsize);
 	}
-	sim->parts[i].tmp = (static_cast<int>(atan2f(-gy, gx) * 180.0f / std::numbers::pi_v<float>) + sim->rng.between(-20, 20) + 360) % 360;
+	sim->parts[i].tmp = (static_cast<int>(dmath::atan2f(-gy, gx) * 180.0f / std::numbers::pi_v<float>) + sim->rng.between(-20, 20) + 360) % 360;
 	sim->parts[i].tmp2 = 4;
 }

@@ -1,4 +1,5 @@
 #include "simulation/ElementCommon.h"
+#include "simulation/DeterministicMath.h"
 #include "STKM.h"
 
 static int update(UPDATE_FUNC_ARGS);
@@ -163,7 +164,7 @@ int Element_STKM_run_stickman(playerst *playerp, UPDATE_FUNC_ARGS)
 		case GRAV_RADIAL:
 			{
 				float gravd;
-				gravd = 0.01f - hypotf((parts[i].x - XCNTR), (parts[i].y - YCNTR));
+				gravd = 0.01f - dmath::hypotf((parts[i].x - XCNTR), (parts[i].y - YCNTR));
 				gvx = ((float)(parts[i].x - XCNTR) / gravd);
 				gvy = ((float)(parts[i].y - YCNTR) / gravd);
 			}
@@ -251,8 +252,8 @@ int Element_STKM_run_stickman(playerst *playerp, UPDATE_FUNC_ARGS)
 
 	gx = (playerp->legs[4] + playerp->legs[12])/2 - gvy;
 	gy = (playerp->legs[5] + playerp->legs[13])/2 + gvx;
-	dl = pow(gx - playerp->legs[4], 2) + pow(gy - playerp->legs[5], 2);
-	dr = pow(gx - playerp->legs[12], 2) + pow(gy - playerp->legs[13], 2);
+	dl = dmath::pow(gx - playerp->legs[4], 2) + dmath::pow(gy - playerp->legs[5], 2);
+	dr = dmath::pow(gx - playerp->legs[12], 2) + dmath::pow(gy - playerp->legs[13], 2);
 
 	//Go left
 	if (((int)(playerp->comm)&0x01) == 0x01)
@@ -509,7 +510,7 @@ int Element_STKM_run_stickman(playerst *playerp, UPDATE_FUNC_ARGS)
 					int angle;
 					int power = 100;
 					if (gvx!=0 || gvy!=0)
-						angle = int(atan2(mvx, mvy)*180.0f/std::numbers::pi_v<float>);
+						angle = int(dmath::atan2(mvx, mvy)*180.0f/std::numbers::pi_v<float>);
 					else
 						angle = sim->rng.between(0, 359);
 					if (((int)playerp->pcomm)&0x01)
@@ -536,25 +537,25 @@ int Element_STKM_run_stickman(playerst *playerp, UPDATE_FUNC_ARGS)
 	}
 
 	//Simulation of joints
-	d = 25/(pow((playerp->legs[0]-playerp->legs[4]), 2) + pow((playerp->legs[1]-playerp->legs[5]), 2)+25) - 0.5;  //Fast distance
+	d = 25/(dmath::pow((playerp->legs[0]-playerp->legs[4]), 2) + dmath::pow((playerp->legs[1]-playerp->legs[5]), 2)+25) - 0.5;  //Fast distance
 	playerp->legs[4] -= (playerp->legs[0]-playerp->legs[4])*d;
 	playerp->legs[5] -= (playerp->legs[1]-playerp->legs[5])*d;
 	playerp->legs[0] += (playerp->legs[0]-playerp->legs[4])*d;
 	playerp->legs[1] += (playerp->legs[1]-playerp->legs[5])*d;
 
-	d = 25/(pow((playerp->legs[8]-playerp->legs[12]), 2) + pow((playerp->legs[9]-playerp->legs[13]), 2)+25) - 0.5;
+	d = 25/(dmath::pow((playerp->legs[8]-playerp->legs[12]), 2) + dmath::pow((playerp->legs[9]-playerp->legs[13]), 2)+25) - 0.5;
 	playerp->legs[12] -= (playerp->legs[8]-playerp->legs[12])*d;
 	playerp->legs[13] -= (playerp->legs[9]-playerp->legs[13])*d;
 	playerp->legs[8] += (playerp->legs[8]-playerp->legs[12])*d;
 	playerp->legs[9] += (playerp->legs[9]-playerp->legs[13])*d;
 
-	d = 36/(pow((playerp->legs[0]-parts[i].x), 2) + pow((playerp->legs[1]-parts[i].y), 2)+36) - 0.5;
+	d = 36/(dmath::pow((playerp->legs[0]-parts[i].x), 2) + dmath::pow((playerp->legs[1]-parts[i].y), 2)+36) - 0.5;
 	parts[i].vx -= (playerp->legs[0]-parts[i].x)*d;
 	parts[i].vy -= (playerp->legs[1]-parts[i].y)*d;
 	playerp->legs[0] += (playerp->legs[0]-parts[i].x)*d;
 	playerp->legs[1] += (playerp->legs[1]-parts[i].y)*d;
 
-	d = 36/(pow((playerp->legs[8]-parts[i].x), 2) + pow((playerp->legs[9]-parts[i].y), 2)+36) - 0.5;
+	d = 36/(dmath::pow((playerp->legs[8]-parts[i].x), 2) + dmath::pow((playerp->legs[9]-parts[i].y), 2)+36) - 0.5;
 	parts[i].vx -= (playerp->legs[8]-parts[i].x)*d;
 	parts[i].vy -= (playerp->legs[9]-parts[i].y)*d;
 	playerp->legs[8] += (playerp->legs[8]-parts[i].x)*d;
@@ -588,7 +589,7 @@ int Element_STKM_run_stickman(playerst *playerp, UPDATE_FUNC_ARGS)
 	}
 
 	//Keeping legs distance
-	if ((pow((playerp->legs[4] - playerp->legs[12]), 2) + pow((playerp->legs[5]-playerp->legs[13]), 2))<16)
+	if ((dmath::pow((playerp->legs[4] - playerp->legs[12]), 2) + dmath::pow((playerp->legs[5]-playerp->legs[13]), 2))<16)
 	{
 		float tvx, tvy;
 		tvx = -gvy;
@@ -596,15 +597,15 @@ int Element_STKM_run_stickman(playerst *playerp, UPDATE_FUNC_ARGS)
 
 		if (tvx || tvy)
 		{
-			playerp->accs[2] -= 0.2*tvx/hypot(tvx, tvy);
-			playerp->accs[3] -= 0.2*tvy/hypot(tvx, tvy);
+			playerp->accs[2] -= 0.2*tvx/dmath::hypot(tvx, tvy);
+			playerp->accs[3] -= 0.2*tvy/dmath::hypot(tvx, tvy);
 
-			playerp->accs[6] += 0.2*tvx/hypot(tvx, tvy);
-			playerp->accs[7] += 0.2*tvy/hypot(tvx, tvy);
+			playerp->accs[6] += 0.2*tvx/dmath::hypot(tvx, tvy);
+			playerp->accs[7] += 0.2*tvy/dmath::hypot(tvx, tvy);
 		}
 	}
 
-	if ((pow((playerp->legs[0] - playerp->legs[8]), 2) + pow((playerp->legs[1]-playerp->legs[9]), 2))<16)
+	if ((dmath::pow((playerp->legs[0] - playerp->legs[8]), 2) + dmath::pow((playerp->legs[1]-playerp->legs[9]), 2))<16)
 	{
 		float tvx, tvy;
 		tvx = -gvy;
@@ -612,11 +613,11 @@ int Element_STKM_run_stickman(playerst *playerp, UPDATE_FUNC_ARGS)
 
 		if (tvx || tvy)
 		{
-			playerp->accs[0] -= 0.2*tvx/hypot(tvx, tvy);
-			playerp->accs[1] -= 0.2*tvy/hypot(tvx, tvy);
+			playerp->accs[0] -= 0.2*tvx/dmath::hypot(tvx, tvy);
+			playerp->accs[1] -= 0.2*tvy/dmath::hypot(tvx, tvy);
 
-			playerp->accs[4] += 0.2*tvx/hypot(tvx, tvy);
-			playerp->accs[5] += 0.2*tvy/hypot(tvx, tvy);
+			playerp->accs[4] += 0.2*tvx/dmath::hypot(tvx, tvy);
+			playerp->accs[5] += 0.2*tvy/dmath::hypot(tvx, tvy);
 		}
 	}
 

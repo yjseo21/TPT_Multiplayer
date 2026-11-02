@@ -1,4 +1,5 @@
 #include "simulation/ElementCommon.h"
+#include "simulation/DeterministicMath.h"
 
 static int update(UPDATE_FUNC_ARGS);
 static int graphics(GRAPHICS_FUNC_ARGS);
@@ -192,10 +193,10 @@ static int update(UPDATE_FUNC_ARGS)
 	int ahead = sim->photons[y][x];
 	if (ID(ahead) != i && TYP(ahead) == PT_PROT)
 	{
-		float velocity1 = powf(parts[i].vx, 2.0f)+powf(parts[i].vy, 2.0f);
-		float velocity2 = powf(parts[ID(ahead)].vx, 2.0f)+powf(parts[ID(ahead)].vy, 2.0f);
-		float direction1 = atan2f(-parts[i].vy, parts[i].vx);
-		float direction2 = atan2f(-parts[ID(ahead)].vy, parts[ID(ahead)].vx);
+		float velocity1 = dmath::powf(parts[i].vx, 2.0f)+dmath::powf(parts[i].vy, 2.0f);
+		float velocity2 = dmath::powf(parts[ID(ahead)].vx, 2.0f)+dmath::powf(parts[ID(ahead)].vy, 2.0f);
+		float direction1 = dmath::atan2f(-parts[i].vy, parts[i].vx);
+		float direction2 = dmath::atan2f(-parts[ID(ahead)].vy, parts[ID(ahead)].vx);
 		float difference = direction1 - direction2; if (difference < 0) difference += 6.28319f;
 
 		if (difference > 3.12659f && difference < 3.15659f && velocity1 + velocity2 > 10.0f)
@@ -244,6 +245,6 @@ static void create(ELEMENT_CREATE_FUNC_ARGS)
 {
 	float a = sim->rng.between(0, 35) * 0.17453f;
 	sim->parts[i].life = 680;
-	sim->parts[i].vx = 2.0f * cosf(a);
-	sim->parts[i].vy = 2.0f * sinf(a);
+	sim->parts[i].vx = 2.0f * dmath::cosf(a);
+	sim->parts[i].vy = 2.0f * dmath::sinf(a);
 }

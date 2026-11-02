@@ -1,4 +1,5 @@
 #include "simulation/ElementCommon.h"
+#include "simulation/DeterministicMath.h"
 #include "FIRE.h"
 #include "PLNT.h"
 
@@ -264,8 +265,8 @@ static void create(ELEMENT_CREATE_FUNC_ARGS)
 	float r = sim->rng.between(128, 255) / 127.0f;
 	float a = sim->rng.between(0, 359) * std::numbers::pi_v<float> / 180.0f;
 	sim->parts[i].life = sim->rng.between(480, 959);
-	sim->parts[i].vx = r * cosf(a);
-	sim->parts[i].vy = r * sinf(a);
+	sim->parts[i].vx = r * dmath::cosf(a);
+	sim->parts[i].vy = r * dmath::sinf(a);
 }
 
 static int DeutExplosion(Simulation * sim, int n, int x, int y, float temp, int t)//testing a new deut create part

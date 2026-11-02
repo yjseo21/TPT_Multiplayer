@@ -1,4 +1,5 @@
 #include "simulation/ElementCommon.h"
+#include "simulation/DeterministicMath.h"
 #include "STKM.h"
 
 static int update(UPDATE_FUNC_ARGS);
@@ -81,8 +82,8 @@ static int update(UPDATE_FUNC_ARGS)
 	//Set target cords
 	if (sim->player2.spwn)
 	{
-		if (sim->player.spwn && (pow((float)sim->player.legs[2]-x, 2) + pow((float)sim->player.legs[3]-y, 2))<=
-		   (pow((float)sim->player2.legs[2]-x, 2) + pow((float)sim->player2.legs[3]-y, 2)))
+		if (sim->player.spwn && (dmath::pow((float)sim->player.legs[2]-x, 2) + dmath::pow((float)sim->player.legs[3]-y, 2))<=
+		   (dmath::pow((float)sim->player2.legs[2]-x, 2) + dmath::pow((float)sim->player2.legs[3]-y, 2)))
 		{
 			tarx = (int)sim->player.legs[2];
 			tary = (int)sim->player.legs[3];
@@ -104,7 +105,7 @@ static int update(UPDATE_FUNC_ARGS)
 	switch (parts[i].tmp2)
 	{
 	case 1:
-		if ((pow(float(tarx-x), 2) + pow(float(tary-y), 2))<600)
+		if ((dmath::pow(float(tarx-x), 2) + dmath::pow(float(tary-y), 2))<600)
 		{
 			if (figh->elem == PT_LIGH || figh->elem == PT_NEUT
 			    || elements[figh->elem].Properties & (PROP_DEADLY | PROP_RADIOACTIVE)

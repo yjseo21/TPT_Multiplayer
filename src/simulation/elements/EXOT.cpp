@@ -1,4 +1,5 @@
 #include "simulation/ElementCommon.h"
+#include "simulation/DeterministicMath.h"
 
 static int update(UPDATE_FUNC_ARGS);
 static int graphics(GRAPHICS_FUNC_ARGS);
@@ -204,9 +205,9 @@ static int graphics(GRAPHICS_FUNC_ARGS)
 		if (gfctx.rng.chance(cpart->tmp2 - 1, 1000))
 		{
 			float frequency = 0.04045f;
-			*colr = int(sin(frequency*c + 4) * 127 + 150);
-			*colg = int(sin(frequency*c + 6) * 127 + 150);
-			*colb = int(sin(frequency*c + 8) * 127 + 150);
+			*colr = int(dmath::sin(frequency*c + 4) * 127 + 150);
+			*colg = int(dmath::sin(frequency*c + 6) * 127 + 150);
+			*colb = int(dmath::sin(frequency*c + 8) * 127 + 150);
 
 			*firea = 100;
 			*firer = 0;
@@ -219,9 +220,9 @@ static int graphics(GRAPHICS_FUNC_ARGS)
 		else
 		{
 			float frequency = 0.00045f;
-			*colr = int(sin(frequency*q + 4) * 127 + (b/1.7));
-			*colg = int(sin(frequency*q + 6) * 127 + (b/1.7));
-			*colb = int(sin(frequency*q + 8) * 127 + (b/1.7));
+			*colr = int(dmath::sin(frequency*q + 4) * 127 + (b/1.7));
+			*colg = int(dmath::sin(frequency*q + 6) * 127 + (b/1.7));
+			*colb = int(dmath::sin(frequency*q + 8) * 127 + (b/1.7));
 			*cola = cpart->tmp / 6;
 
 			*firea = *cola;
@@ -236,9 +237,9 @@ static int graphics(GRAPHICS_FUNC_ARGS)
 	else
 	{
 		float frequency = 0.01300f;
-		*colr = int(sin(frequency*q + 6.00) * 127 + ((b/2.9) + 80));
-		*colg = int(sin(frequency*q + 6.00) * 127 + ((b/2.9) + 80));
-		*colb = int(sin(frequency*q + 6.00) * 127 + ((b/2.9) + 80));
+		*colr = int(dmath::sin(frequency*q + 6.00) * 127 + ((b/2.9) + 80));
+		*colg = int(dmath::sin(frequency*q + 6.00) * 127 + ((b/2.9) + 80));
+		*colb = int(dmath::sin(frequency*q + 6.00) * 127 + ((b/2.9) + 80));
 		*cola = cpart->tmp / 6;
 		*firea = *cola;
 		*firer = *colr;

@@ -1,4 +1,5 @@
 #include "simulation/ElementCommon.h"
+#include "simulation/DeterministicMath.h"
 #include "SOAP.h"
 
 static int update(UPDATE_FUNC_ARGS);
@@ -239,7 +240,7 @@ static int update(UPDATE_FUNC_ARGS)
 			dx = parts[i].x - parts[parts[i].tmp].x;
 			dy = parts[i].y - parts[parts[i].tmp].y;
 			Element_SOAP_neighourLoop(sim, dx, dy);
-			d = 9/(pow(dx, 2)+pow(dy, 2)+9)-0.5;
+			d = 9/(dmath::pow(dx, 2)+dmath::pow(dy, 2)+9)-0.5;
 			parts[parts[i].tmp].vx -= dx*d;
 			parts[parts[i].tmp].vy -= dy*d;
 			parts[i].vx += dx*d;
@@ -254,7 +255,7 @@ static int update(UPDATE_FUNC_ARGS)
 					dx = parts[ii].x - parts[parts[i].tmp].x;
 					dy = parts[ii].y - parts[parts[i].tmp].y;
 					Element_SOAP_neighourLoop(sim, dx, dy);
-					d = 81/(pow(dx, 2)+pow(dy, 2)+81)-0.5;
+					d = 81/(dmath::pow(dx, 2)+dmath::pow(dy, 2)+81)-0.5;
 					parts[parts[i].tmp].vx -= dx*d*0.5f;
 					parts[parts[i].tmp].vy -= dy*d*0.5f;
 					parts[ii].vx += dx*d*0.5f;

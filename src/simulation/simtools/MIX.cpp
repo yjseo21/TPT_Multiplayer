@@ -1,4 +1,5 @@
 #include "simulation/ToolCommon.h"
+#include "simulation/DeterministicMath.h"
 
 #include "common/tpt-rand.h"
 #include <cmath>
@@ -25,7 +26,7 @@ static int perform(SimTool *tool, Simulation * sim, Particle * cpart, int x, int
 	if(sim->rng() % 100 != 0)
 		return 0;
 
-	int distance = (int)(std::pow(strength, .5f) * 10);
+	int distance = (int)(dmath::pow(strength, .5f) * 10);
 
 	if (distance <= 0)
 		return 0;

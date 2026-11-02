@@ -1,5 +1,6 @@
 #pragma once
 #include "Brush.h"
+#include "simulation/DeterministicMath.h"
 #include <cmath>
 
 class EllipseBrush: public Brush
@@ -35,12 +36,12 @@ public:
 			{
 				if (perfectCircle)
 				{
-					while (pow(i - rx, 2.0) * pow(ry - 0.5, 2.0) + pow(yTop - ry, 2.0) * pow(rx - 0.5, 2.0) <= pow(rx, 2.0) * pow(ry, 2.0))
+					while (dmath::pow(i - rx, 2.0) * dmath::pow(ry - 0.5, 2.0) + dmath::pow(yTop - ry, 2.0) * dmath::pow(rx - 0.5, 2.0) <= dmath::pow(rx, 2.0) * dmath::pow(ry, 2.0))
 						yTop++;
 				}
 				else
 				{
-					while (pow(i - rx, 2.0) * pow(ry, 2.0) + pow(yTop - ry, 2.0) * pow(rx, 2.0) <= pow(rx, 2.0) * pow(ry, 2.0))
+					while (dmath::pow(i - rx, 2.0) * dmath::pow(ry, 2.0) + dmath::pow(yTop - ry, 2.0) * dmath::pow(rx, 2.0) <= dmath::pow(rx, 2.0) * dmath::pow(ry, 2.0))
 						yTop++;
 				}
 				yBottom = 2*ry - yTop;

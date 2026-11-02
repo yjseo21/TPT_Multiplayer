@@ -1,4 +1,5 @@
 #include "Simulation.h"
+#include "simulation/DeterministicMath.h"
 #include "Sample.h"
 #include "Snapshot.h"
 #include "Air.h"
@@ -481,27 +482,27 @@ void Simulation::ApplyDecoration(int x, int y, int colR_, int colG_, int colB_, 
 						switch (deco_space)
 						{
 						case DECOSPACE_SRGB:
-							pa = (pa <= 0.04045f) ? (pa / 12.92f) : pow((pa + 0.055f) / 1.055f, 2.4f);
-							pr = (pr <= 0.04045f) ? (pr / 12.92f) : pow((pr + 0.055f) / 1.055f, 2.4f);
-							pg = (pg <= 0.04045f) ? (pg / 12.92f) : pow((pg + 0.055f) / 1.055f, 2.4f);
-							pb = (pb <= 0.04045f) ? (pb / 12.92f) : pow((pb + 0.055f) / 1.055f, 2.4f);
+							pa = (pa <= 0.04045f) ? (pa / 12.92f) : dmath::pow((pa + 0.055f) / 1.055f, 2.4f);
+							pr = (pr <= 0.04045f) ? (pr / 12.92f) : dmath::pow((pr + 0.055f) / 1.055f, 2.4f);
+							pg = (pg <= 0.04045f) ? (pg / 12.92f) : dmath::pow((pg + 0.055f) / 1.055f, 2.4f);
+							pb = (pb <= 0.04045f) ? (pb / 12.92f) : dmath::pow((pb + 0.055f) / 1.055f, 2.4f);
 							break;
 
 						case DECOSPACE_LINEAR:
 							break;
 
 						case DECOSPACE_GAMMA22:
-							pa = pow(pa, 2.2f);
-							pr = pow(pr, 2.2f);
-							pg = pow(pg, 2.2f);
-							pb = pow(pb, 2.2f);
+							pa = dmath::pow(pa, 2.2f);
+							pr = dmath::pow(pr, 2.2f);
+							pg = dmath::pow(pg, 2.2f);
+							pb = dmath::pow(pb, 2.2f);
 							break;
 
 						case DECOSPACE_GAMMA18:
-							pa = pow(pa, 1.8f);
-							pr = pow(pr, 1.8f);
-							pg = pow(pg, 1.8f);
-							pb = pow(pb, 1.8f);
+							pa = dmath::pow(pa, 1.8f);
+							pr = dmath::pow(pr, 1.8f);
+							pg = dmath::pow(pg, 1.8f);
+							pb = dmath::pow(pb, 1.8f);
 							break;
 						}
 						tas += pa;
@@ -519,27 +520,27 @@ void Simulation::ApplyDecoration(int x, int y, int colR_, int colG_, int colB_, 
 			switch (deco_space)
 			{
 			case DECOSPACE_SRGB:
-				ta = (ta <= 0.0031308f) ? (ta * 12.92f) : (1.055f * pow(ta, 1.f / 2.4f) - 0.055f);
-				tr = (tr <= 0.0031308f) ? (tr * 12.92f) : (1.055f * pow(tr, 1.f / 2.4f) - 0.055f);
-				tg = (tg <= 0.0031308f) ? (tg * 12.92f) : (1.055f * pow(tg, 1.f / 2.4f) - 0.055f);
-				tb = (tb <= 0.0031308f) ? (tb * 12.92f) : (1.055f * pow(tb, 1.f / 2.4f) - 0.055f);
+				ta = (ta <= 0.0031308f) ? (ta * 12.92f) : (1.055f * dmath::pow(ta, 1.f / 2.4f) - 0.055f);
+				tr = (tr <= 0.0031308f) ? (tr * 12.92f) : (1.055f * dmath::pow(tr, 1.f / 2.4f) - 0.055f);
+				tg = (tg <= 0.0031308f) ? (tg * 12.92f) : (1.055f * dmath::pow(tg, 1.f / 2.4f) - 0.055f);
+				tb = (tb <= 0.0031308f) ? (tb * 12.92f) : (1.055f * dmath::pow(tb, 1.f / 2.4f) - 0.055f);
 				break;
 
 			case DECOSPACE_LINEAR:
 				break;
 
 			case DECOSPACE_GAMMA22:
-				ta = pow(ta, 1.f / 2.2f);
-				tr = pow(tr, 1.f / 2.2f);
-				tg = pow(tg, 1.f / 2.2f);
-				tb = pow(tb, 1.f / 2.2f);
+				ta = dmath::pow(ta, 1.f / 2.2f);
+				tr = dmath::pow(tr, 1.f / 2.2f);
+				tg = dmath::pow(tg, 1.f / 2.2f);
+				tb = dmath::pow(tb, 1.f / 2.2f);
 				break;
 
 			case DECOSPACE_GAMMA18:
-				ta = pow(ta, 1.f / 1.8f);
-				tr = pow(tr, 1.f / 1.8f);
-				tg = pow(tg, 1.f / 1.8f);
-				tb = pow(tb, 1.f / 1.8f);
+				ta = dmath::pow(ta, 1.f / 1.8f);
+				tr = dmath::pow(tr, 1.f / 1.8f);
+				tg = dmath::pow(tg, 1.f / 1.8f);
+				tb = dmath::pow(tb, 1.f / 1.8f);
 				break;
 			}
 			if (!parts[ID(rp)].dcolour)

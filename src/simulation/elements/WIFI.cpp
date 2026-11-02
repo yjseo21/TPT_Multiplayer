@@ -1,4 +1,5 @@
 #include "simulation/ElementCommon.h"
+#include "simulation/DeterministicMath.h"
 
 static int update(UPDATE_FUNC_ARGS);
 static int graphics(GRAPHICS_FUNC_ARGS);
@@ -88,9 +89,9 @@ constexpr float FREQUENCY = 0.0628f;
 static int graphics(GRAPHICS_FUNC_ARGS)
 {
 	int q = (int)((cpart->temp-73.15f)/100+1);
-	*colr = int(sin(FREQUENCY*q + 0) * 127 + 128);
-	*colg = int(sin(FREQUENCY*q + 2) * 127 + 128);
-	*colb = int(sin(FREQUENCY*q + 4) * 127 + 128);
+	*colr = int(dmath::sin(FREQUENCY*q + 0) * 127 + 128);
+	*colg = int(dmath::sin(FREQUENCY*q + 2) * 127 + 128);
+	*colb = int(dmath::sin(FREQUENCY*q + 4) * 127 + 128);
 	*pixel_mode |= EFFECT_DBGLINES;
 	return 0;
 }

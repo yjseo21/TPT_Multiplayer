@@ -6,6 +6,7 @@
 #include "client/GameSave.h"
 #include "common/platform/Platform.h"
 #include "gui/game/EllipseBrush.h"
+#include "graphics/Renderer.h"
 #include "simulation/Air.h"
 #include "simulation/AccessProperty.h"
 #include "simulation/Sign.h"
@@ -19,6 +20,10 @@ namespace multiplayer
 World::World() : sim(Simulation::Factory())
 {
     sim->deterministicGravity = true;
+    // Physics reads some colour tables (fireworks pick their colour from one).
+    // They are filled by the renderer or the save loader, which a room server
+    // may never use: without this, the first firework crashed the server.
+    Renderer::PopulateTables();
 }
 // Room stickmen: slot 1 is STKM, slot 2 STKM2, slots 3 and 4 are fighters
 // steered by their player instead of their AI.

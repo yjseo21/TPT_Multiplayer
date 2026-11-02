@@ -1,4 +1,5 @@
 #include "simulation/ElementCommon.h"
+#include "simulation/DeterministicMath.h"
 #include "PLNT.h"
 #include <algorithm>
 
@@ -410,7 +411,7 @@ int Element_PLNT_detectDown(Simulation *sim, int x, int y)
 
 	sim->GetGravityField(x, y, 1.0f, 1.0f, pGravX, pGravY);
 
-	float gravLen = hypot(pGravX, pGravY);
+	float gravLen = dmath::hypot(pGravX, pGravY);
 
 	// Normalize gravity
 	if (gravLen > 0)

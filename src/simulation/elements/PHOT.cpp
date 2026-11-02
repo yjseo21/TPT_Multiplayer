@@ -1,4 +1,5 @@
 #include "simulation/ElementCommon.h"
+#include "simulation/DeterministicMath.h"
 #include "FIRE.h"
 #include "FILT.h"
 
@@ -88,16 +89,16 @@ static int update(UPDATE_FUNC_ARGS)
 						rr = int(sim->rng.between(128, 255) / 127.0f);
 					else
 						rr = int(sim->rng.between(128, 355) / 127.0f);
-					parts[ID(r)].vx = rr*cosf(rrr);
-					parts[ID(r)].vy = rr*sinf(rrr);
+					parts[ID(r)].vx = rr*dmath::cosf(rrr);
+					parts[ID(r)].vy = rr*dmath::sinf(rrr);
 					sim->pv[y/CELL][x/CELL] -= 15.0f * CFDS;
 				}
 			}
 			else if((TYP(r) == PT_QRTZ || TYP(r) == PT_PQRT) && !ry && !rx)//if on QRTZ
 			{
 				float a = sim->rng.between(0, 359) * std::numbers::pi_v<float> / 180.0f;
-				parts[i].vx = 3.0f*cosf(a);
-				parts[i].vy = 3.0f*sinf(a);
+				parts[i].vx = 3.0f*dmath::cosf(a);
+				parts[i].vy = 3.0f*dmath::sinf(a);
 				if(parts[i].ctype == 0x3FFFFFFF)
 					parts[i].ctype = 0x1F << sim->rng.between(0, 25);
 				if (parts[i].life)
@@ -106,7 +107,7 @@ static int update(UPDATE_FUNC_ARGS)
 			else if(TYP(r) == PT_BGLA && !ry && !rx)//if on BGLA
 			{
 				float a = sim->rng.between(-50, 50) * 0.001f;
-				float rx = cosf(a), ry = sinf(a), vx, vy;
+				float rx = dmath::cosf(a), ry = dmath::sinf(a), vx, vy;
 				vx = rx * parts[i].vx + ry * parts[i].vy;
 				vy = rx * parts[i].vy - ry * parts[i].vx;
 				parts[i].vx = vx;
@@ -178,8 +179,8 @@ static int graphics(GRAPHICS_FUNC_ARGS)
 static void create(ELEMENT_CREATE_FUNC_ARGS)
 {
 	float a = sim->rng.between(0, 7) * 0.78540f;
-	sim->parts[i].vx = 3.0f * cosf(a);
-	sim->parts[i].vy = 3.0f * sinf(a);
+	sim->parts[i].vx = 3.0f * dmath::cosf(a);
+	sim->parts[i].vy = 3.0f * dmath::sinf(a);
 	if (TYP(sim->pmap[y][x]) == PT_FILT)
 		sim->parts[i].ctype = Element_FILT_interactWavelengths(sim, &sim->parts[ID(sim->pmap[y][x])], sim->parts[i].ctype);
 }

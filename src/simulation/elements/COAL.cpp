@@ -1,4 +1,5 @@
 #include "simulation/ElementCommon.h"
+#include "simulation/DeterministicMath.h"
 #include "COAL.h"
 
 void Element::Element_COAL()
@@ -94,9 +95,9 @@ int Element_COAL_graphics(GRAPHICS_FUNC_ARGS) // Both COAL and Broken Coal
 		//  q = ((cpart->temp-295.15f)>300.0f)?300.0f-(300.0f-200.0f):(cpart->temp-295.15f)-(300.0f-200.0f);
 		auto q = int((cpart->temp > 595.15f) ? 200.0f : cpart->temp - 395.15f);
 
-		*colr += int(sin(FREQUENCY*q) * 226);
-		*colg += int(-sin(FREQUENCY*q*4.55) * 34);
-		*colb += int(-sin(FREQUENCY*q*2.22) * 64);
+		*colr += int(dmath::sin(FREQUENCY*q) * 226);
+		*colg += int(-dmath::sin(FREQUENCY*q*4.55) * 34);
+		*colb += int(-dmath::sin(FREQUENCY*q*2.22) * 64);
 	}
 	return 0;
 }

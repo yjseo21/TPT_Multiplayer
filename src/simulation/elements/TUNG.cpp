@@ -1,4 +1,5 @@
 #include "simulation/ElementCommon.h"
+#include "simulation/DeterministicMath.h"
 #include "simulation/Air.h"
 
 static int update(UPDATE_FUNC_ARGS);
@@ -126,7 +127,7 @@ static int graphics(GRAPHICS_FUNC_ARGS)
 	{
 		if (tempOver > std::numbers::pi / 2.0)
 			tempOver = std::numbers::pi / 2.0;
-		double gradv = sin(tempOver) + 1.0;
+		double gradv = dmath::sin(tempOver) + 1.0;
 		*firer = (int)(gradv * 258.0);
 		*fireg = (int)(gradv * 156.0);
 		*fireb = (int)(gradv * 112.0);

@@ -1,4 +1,5 @@
 #include "Simulation.h"
+#include "simulation/DeterministicMath.h"
 #include "Air.h"
 #include "ElementClasses.h"
 #include "TransitionConstants.h"
@@ -1236,7 +1237,7 @@ int Simulation::try_move(int i, int x, int y, int nx, int ny)
 		if (rt == PT_WOOD)
 		{
 			//@ WOOD -> SAWD
-			float vel = std::sqrt(std::pow(parts[i].vx, 2) + std::pow(parts[i].vy, 2));
+			float vel = std::sqrt(dmath::pow(parts[i].vx, 2) + dmath::pow(parts[i].vy, 2));
 			if (vel > 5)
 				part_change_type(ID(r), nx, ny, PT_SAWD);
 		}
@@ -1732,7 +1733,7 @@ Simulation::GetNormalResult Simulation::get_normal(int pt, int x, int y, float d
 		return { false };
 	ex = float(rx - lx);
 	ey = float(ry - ly);
-	r = 1.0f/hypot(ex, ey);
+	r = 1.0f/dmath::hypot(ex, ey);
 	auto nx =  ey * r;
 	auto ny = -ex * r;
 
@@ -2085,7 +2086,7 @@ void Simulation::create_cherenkov_photon(int pp)//photons from NEUT going throug
 	{
 		return;
 	}
-	if (std::hypot(parts[pp].vx, parts[pp].vy) < 1.44f)
+	if (dmath::hypot(parts[pp].vx, parts[pp].vy) < 1.44f)
 	{
 		return;
 	}
@@ -2103,7 +2104,7 @@ void Simulation::create_cherenkov_photon(int pp)//photons from NEUT going throug
 	parts[i].vx = parts[pp].vx - lr * 2.5f * parts[pp].vy;
 	parts[i].vy = parts[pp].vy + lr * 2.5f * parts[pp].vx;
 	/* photons have speed of light. no discussion. */
-	auto r = 1.269f / std::hypot(parts[i].vx, parts[i].vy);
+	auto r = 1.269f / dmath::hypot(parts[i].vx, parts[i].vy);
 	parts[i].vx *= r;
 	parts[i].vy *= r;
 }
@@ -2129,7 +2130,7 @@ void Simulation::GetGravityField(int x, int y, float particleGrav, float newtonG
 			auto dy = float(y - YCNTR);
 			if (dx || dy)
 			{
-				auto pGravD = 0.01f - hypotf(dx, dy);
+				auto pGravD = 0.01f - dmath::hypotf(dx, dy);
 				pGravX = particleGrav * (dx / pGravD);
 				pGravY = particleGrav * (dy / pGravD);
 			}
@@ -3094,7 +3095,7 @@ void SimulationImpl::MovementPhase(int i, Neighbourhood neighbourhood)
 				{
 					float r = rng.between(-50, 50) * 0.01f, rx, ry, anrx, anry;
 					r = r * r * r;
-					rx = cosf(r); ry = sinf(r);
+					rx = dmath::cosf(r); ry = dmath::sinf(r);
 					anrx = rx * nrx + ry * nry;
 					anry = rx * nry - ry * nrx;
 					auto dp = anrx*parts[i].vx + anry*parts[i].vy;
@@ -3779,9 +3780,9 @@ void Simulation::BeforeSim(bool willUpdate)
 		if (elementRecount)
 			std::fill(elementCount, elementCount+PT_NUM, 0);
 	}
-	sandcolour_interface = int(20.0f*sin(float(sandcolour_frame)*std::numbers::pi_v<float>/180.0f));
+	sandcolour_interface = int(20.0f*dmath::sin(float(sandcolour_frame)*std::numbers::pi_v<float>/180.0f));
 	sandcolour_frame = (sandcolour_frame+1)%360;
-	sandcolour = int(20.0f*sin(float(frameCount)*std::numbers::pi_v<float>/180.0f));
+	sandcolour = int(20.0f*dmath::sin(float(frameCount)*std::numbers::pi_v<float>/180.0f));
 
 	if (gravWallChanged)
 	{

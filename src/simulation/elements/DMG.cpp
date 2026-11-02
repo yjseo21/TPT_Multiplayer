@@ -1,4 +1,5 @@
 #include "simulation/ElementCommon.h"
+#include "simulation/DeterministicMath.h"
 
 static int update(UPDATE_FUNC_ARGS);
 static int graphics(GRAPHICS_FUNC_ARGS);
@@ -71,15 +72,15 @@ static int update(UPDATE_FUNC_ARGS)
 						{
 							if (x+nxi>=0 && y+nxj>=0 && x+nxi<XRES && y+nxj<YRES && (nxi || nxj))
 							{
-								auto dist = int(sqrt(pow(nxi, 2.0f)+pow(nxj, 2.0f)));//;(pow((float)nxi,2))/(pow((float)rad,2))+(pow((float)nxj,2))/(pow((float)rad,2));
+								auto dist = int(sqrt(dmath::pow(nxi, 2.0f)+dmath::pow(nxj, 2.0f)));//;(dmath::pow((float)nxi,2))/(dmath::pow((float)rad,2))+(dmath::pow((float)nxj,2))/(dmath::pow((float)rad,2));
 								if (!dist || (dist <= rad))
 								{
 									auto rr = pmap[y+nxj][x+nxi];
 									if (rr)
 									{
-										auto angle = atan2((float)nxj, nxi);
-										auto fx = cos(angle) * 7.0f;
-										auto fy = sin(angle) * 7.0f;
+										auto angle = dmath::atan2((float)nxj, nxi);
+										auto fx = dmath::cos(angle) * 7.0f;
+										auto fy = dmath::sin(angle) * 7.0f;
 										parts[ID(rr)].vx += fx;
 										parts[ID(rr)].vy += fy;
 										sim->vx[(y+nxj)/CELL][(x+nxi)/CELL] += fx;

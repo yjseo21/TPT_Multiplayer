@@ -261,13 +261,29 @@ else
 endif
 json_dep = dependency('jsoncpp', static: is_static)
 
+if get_option('build_multiplayer')
+	# Rooms run the same physics on every player's computer and the server, which
+	# may be different compilers, operating systems and CPUs. Floating point must
+	# therefore be strict IEEE everywhere: no fast-math reordering or
+	# approximations, and no fused multiply-add (clang fuses by default, and ARM64
+	# has FMA). Transcendental functions come from simulation/DeterministicMath.
+	if cpp_compiler.get_id() == 'clang-cl'
+		project_cpp_args += [ '/fp:precise', '/clang:-ffp-contract=off' ]
+	elif cpp_compiler.get_argument_syntax() == 'msvc'
+		project_cpp_args += [ '/fp:precise' ] # contracts nothing unless /fp:contract is given
+	else
+		project_cpp_args += [ '-fno-fast-math', '-ffp-contract=off' ]
+	endif
+endif
 if not is_debug
 	args_ccomp_opt = []
 	if cpp_compiler.get_argument_syntax() == 'msvc'
 		args_ccomp_opt += [
 			'/Oy-',
-			'/fp:fast',
 		]
+		if not get_option('build_multiplayer')
+			args_ccomp_opt += [ '/fp:fast' ]
+		endif
 		project_link_args += [
 			'/OPT:REF',
 			'/OPT:ICF',
@@ -275,10 +291,14 @@ if not is_debug
 	else
 		args_ccomp_opt += [
 			'-ftree-vectorize',
-			'-funsafe-math-optimizations',
-			'-ffast-math',
 			'-fomit-frame-pointer',
 		]
+		if not get_option('build_multiplayer')
+			args_ccomp_opt += [
+				'-funsafe-math-optimizations',
+				'-ffast-math',
+			]
+		endif
 	endif
 	project_cpp_args += args_ccomp_opt
 endif

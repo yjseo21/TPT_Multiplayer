@@ -93,3 +93,47 @@ Changes:
   jumping ahead, and verifies 45 fingerprints.
 
 `BuildId` is now `tpt-c205becb-mp3-ingame6`.
+
+## Identical physics on every platform (1.0.4)
+
+Windows and macOS players on a Linux server resynchronized every few seconds:
+their copy of the world disagreed with the server's within a second. Rooms
+between the same operating systems were fine, and the tests only ever ran
+those.
+
+Causes, found with a new probe (`tpt-determinism`) that runs a busy mixed
+world and a scene for every element on each platform:
+- **System maths functions.** `sin`, `cos`, `atan2`, `pow`, `hypot` and `exp`
+  differ in their last bits between glibc, Windows' UCRT and Apple's
+  library. 9 of 194 element scenes differed between Linux and Windows
+  (photons, neutrons, fireworks, explosions and others), and so did the busy
+  world.
+- **Fast-math.** The game is built with `-ffast-math` and `/fp:fast`, which
+  let each compiler reorder and approximate arithmetic its own way.
+- **Denormals.** Windows and Linux builds flush them to zero, but macOS builds
+  didn't.
+
+Fixes:
+- **`simulation/DeterministicMath`:** `sin`, `cos`, `atan2`, `exp`, `log`,
+  `pow` and `hypot`, built only from IEEE-exact operations, with a barrier
+  against fused multiply-add. They're within 1-3 units in the last place of a
+  double (`pow` within 63). All 163 calls in the simulation and brush code use
+  them now.
+- **Strict floating point in multiplayer builds:** `-fno-fast-math
+  -ffp-contract=off` and `/fp:precise`. Physics speed is unchanged in the
+  benchmark scenes.
+- **Rooms flush denormals on every CPU,** including ARM64 (`FPCR.FZ`).
+- **Fireworks crashed any program without a renderer** (a room server that
+  never served a video player): their colour table was empty. Every room world
+  now fills the tables.
+
+Verification:
+- **The probe:** Linux (GCC, glibc) and Windows (MinGW, UCRT) produce
+  identical fingerprints at all 216 checkpoints.
+- **A real room:** a Windows client against a Linux server, with 28 edits,
+  verified all 40 fingerprints with no resyncs. Before the fix it diverged at
+  tick 60.
+- **CI:** `multiplayer-determinism` pins the fingerprint, so CI checks that
+  MSVC, Apple clang on both CPUs, and GCC all compute it.
+
+`BuildId` is now `tpt-c205becb-mp3-ingame7`.

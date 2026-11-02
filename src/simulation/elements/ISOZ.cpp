@@ -1,4 +1,5 @@
 #include "simulation/ElementCommon.h"
+#include "simulation/DeterministicMath.h"
 
 static int update(UPDATE_FUNC_ARGS);
 
@@ -55,8 +56,8 @@ static int update(UPDATE_FUNC_ARGS)
 		sim->create_part(i, x, y, PT_PHOT);
 		rr = sim->rng.between(128, 355) / 127.0f;
 		rrr = sim->rng.between(0, 359) * std::numbers::pi_v<float> / 180.0f;
-		parts[i].vx = rr*cosf(rrr);
-		parts[i].vy = rr*sinf(rrr);
+		parts[i].vx = rr*dmath::cosf(rrr);
+		parts[i].vy = rr*dmath::sinf(rrr);
 	}
 	return 0;
 }

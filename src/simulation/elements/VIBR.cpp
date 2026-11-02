@@ -1,4 +1,5 @@
 #include "simulation/ElementCommon.h"
+#include "simulation/DeterministicMath.h"
 #include "VIBR.h"
 
 void Element::Element_VIBR()
@@ -221,7 +222,7 @@ int Element_VIBR_graphics(GRAPHICS_FUNC_ARGS)
 	int gradient = cpart->tmp/10;
 	if (gradient >= 100 || cpart->life)
 	{
-		*colr = (int)(fabs(sin(exp((750.0f-cpart->life)/170)))*200.0f);
+		*colr = (int)(fabs(dmath::sin(dmath::exp((750.0f-cpart->life)/170)))*200.0f);
 		if (cpart->tmp2)
 		{
 			*colg = *colr;

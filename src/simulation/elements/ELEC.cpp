@@ -1,4 +1,5 @@
 #include "simulation/ElementCommon.h"
+#include "simulation/DeterministicMath.h"
 
 static int update(UPDATE_FUNC_ARGS);
 static int graphics(GRAPHICS_FUNC_ARGS);
@@ -160,6 +161,6 @@ static void create(ELEMENT_CREATE_FUNC_ARGS)
 {
 	float a = sim->rng.between(0, 359) * std::numbers::pi_v<float> / 180.0f;
 	sim->parts[i].life = 680;
-	sim->parts[i].vx = 2.0f * cosf(a);
-	sim->parts[i].vy = 2.0f * sinf(a);
+	sim->parts[i].vx = 2.0f * dmath::cosf(a);
+	sim->parts[i].vy = 2.0f * dmath::sinf(a);
 }

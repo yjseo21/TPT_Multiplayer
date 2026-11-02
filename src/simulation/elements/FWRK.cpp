@@ -1,4 +1,5 @@
 #include "simulation/ElementCommon.h"
+#include "simulation/DeterministicMath.h"
 #include <algorithm>
 
 static int update(UPDATE_FUNC_ARGS);
@@ -59,8 +60,8 @@ static int update(UPDATE_FUNC_ARGS)
 		if (gx*gx+gy*gy < 0.001f)
 		{
 			float angle = sim->rng.between(0, 6283) * 0.001f;//(in radians, between 0 and 2*pi)
-			gx += sinf(angle)*elements[PT_FWRK].Gravity*0.5f;
-			gy += cosf(angle)*elements[PT_FWRK].Gravity*0.5f;
+			gx += dmath::sinf(angle)*elements[PT_FWRK].Gravity*0.5f;
+			gy += dmath::cosf(angle)*elements[PT_FWRK].Gravity*0.5f;
 		}
 		gmax = std::max(fabsf(gx), fabsf(gy));
 		if (sim->eval_move(PT_FWRK, (int)(x-(gx/gmax)+0.5f), (int)(y-(gy/gmax)+0.5f), nullptr))
@@ -99,8 +100,8 @@ static int update(UPDATE_FUNC_ARGS)
 			{
 				magnitude = sim->rng.between(40, 99) * 0.05f;
 				angle = sim->rng.between(0, 6283) * 0.001f;//(in radians, between 0 and 2*pi)
-				parts[np].vx = parts[i].vx*0.5f + cosf(angle)*magnitude;
-				parts[np].vy = parts[i].vy*0.5f + sinf(angle)*magnitude;
+				parts[np].vx = parts[i].vx*0.5f + dmath::cosf(angle)*magnitude;
+				parts[np].vy = parts[i].vy*0.5f + dmath::sinf(angle)*magnitude;
 				parts[np].ctype = col;
 				parts[np].tmp = 1;
 				parts[np].life = sim->rng.between(70, 109);

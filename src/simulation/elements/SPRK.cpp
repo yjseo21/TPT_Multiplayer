@@ -1,4 +1,5 @@
 #include "simulation/ElementCommon.h"
+#include "simulation/DeterministicMath.h"
 #include "NTCT.h"
 #include "PIPE.h"
 #include "FIRE.h"
@@ -150,7 +151,7 @@ static int update(UPDATE_FUNC_ARGS)
 								parts[i].life=60;
 							parts[p].temp=parts[p].life*parts[i].tmp/2.5;
 							parts[p].tmp2=1;
-							parts[p].tmp=int(atan2(-ry, float(rx))*360/std::numbers::pi_v<float>);
+							parts[p].tmp=int(dmath::atan2(-ry, float(rx))*360/std::numbers::pi_v<float>);
 							parts[p].dcolour = parts[i].dcolour;
 							parts[i].temp = restrict_flt(parts[i].temp - (parts[i].tmp * 2 + parts[i].temp / 5), MIN_TEMP, MAX_TEMP); // slight self-cooling
 							if (fabs(sim->pv[y/CELL][x/CELL])!=0.0f)

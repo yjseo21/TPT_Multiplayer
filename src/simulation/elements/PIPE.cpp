@@ -1,4 +1,5 @@
 #include "simulation/ElementCommon.h"
+#include "simulation/DeterministicMath.h"
 #include "PIPE.h"
 #include "SOAP.h"
 
@@ -549,7 +550,7 @@ static void pushParticle(Simulation * sim, int i, int count, int original)
 	{
 		//normal random push
 		auto rndstore = sim->rng.gen();
-		// RAND_MAX is at least 32767 on all platforms i.e. pow(8,5)-1
+		// RAND_MAX is at least 32767 on all platforms i.e. dmath::pow(8,5)-1
 		// so can go 5 cycles without regenerating rndstore
 		// (although now we use our own randomizer so maybe should reevaluate all the rndstore usages in every element)
 		for (auto q=0; q<3; q++)//try to push 3 times

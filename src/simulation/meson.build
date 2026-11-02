@@ -1,5 +1,6 @@
 simulation_files = files(
 	'Air.cpp',
+	'DeterministicMath.cpp',
 	'AccessProperty.cpp',
 	'Element.cpp',
 	'ElementClasses.cpp',

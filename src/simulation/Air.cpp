@@ -1,4 +1,5 @@
 #include "Air.h"
+#include "simulation/DeterministicMath.h"
 #include "Simulation.h"
 #include "ElementClasses.h"
 #include "common/tpt-rand.h"
@@ -12,7 +13,7 @@ void Air::make_kernel(void) //used for velocity
 	{
 		for (auto i=-1; i<2; i++)
 		{
-			kernel[(i+1)+3*(j+1)] = expf(-2.0f*(i*i+j*j));
+			kernel[(i+1)+3*(j+1)] = dmath::expf(-2.0f*(i*i+j*j));
 			s += kernel[(i+1)+3*(j+1)];
 		}
 	}
@@ -443,7 +444,7 @@ void Air::update_air(void)
 				{
 					auto dwx = (std::abs(vorticityBmap(sim, y, x+1)) - std::abs(vorticityBmap(sim, y, x-1)))*0.5f;
 					auto dwy = (std::abs(vorticityBmap(sim, y+1, x)) - std::abs(vorticityBmap(sim, y-1, x)))*0.5f;
-					auto norm = std::hypot(dwx, dwy);
+					auto norm = dmath::hypot(dwx, dwy);
 					auto w = vorticityBmap(sim, y, x);
 
 					dx += vorticityCoeff/5.0f * dwy / (norm + 0.001f) * w;

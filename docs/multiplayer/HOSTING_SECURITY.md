@@ -145,22 +145,32 @@ and starts them at boot. Useful commands:
 - `journalctl --user -u tpt-server@NAME`: its log.
 - `systemctl --user restart tpt-server@NAME`: after an update.
 
-The server runs as you, so the sandbox has to do what a separate user would.
-It replaces your home folder with an empty one that holds only this room's
-folder, read-only except `data/`. This was checked by running a probe
-under the same settings. From inside, the probe saw this:
-- **Your files:** none. No `.ssh`, `.bashrc` or anything else in your home;
-  only `services/powdertoy/NAME`.
-- **The passwords file:** unreadable (systemd reads it before starting the
-  server).
-- **The server binary:** read-only, so a compromised server can't replace it.
-- **The system:** read-only, with only basic devices in `/dev`.
+This unit works on stock Ubuntu 24.04 and later. Those releases restrict
+unprivileged user namespaces (`kernel.apparmor_restrict_unprivileged_userns`),
+and a user service can't hide files or mount a read-only system without one.
+So it keeps only the restrictions that system-call filters provide:
+- **Privileges:** none, and it can't gain any.
+- **Sockets:** internet sockets only.
+- **System calls:** the system-service set, without privileged, resource,
+  mount or debugging calls.
+- **Memory and namespaces:** no writable-and-executable memory, and it can't
+  create namespaces.
+- **Resources:** capped memory, tasks and CPU.
 
-The other restrictions match the system service: no privileges, internet
-sockets only, the same system-call filter, and the same memory, task and CPU
-limits. The one difference is identity: the process keeps your user ID, inside
-a user namespace of its own. That's why the folder and file restrictions above
-matter, and why it should never run from a folder holding anything else.
+It was tested with user namespaces disabled: the room started and served a
+player.
+
+**The trade-off:** it runs as you, with your file access, like a Minecraft
+server started the same way. If a bug in it were ever exploited, the attacker
+could read what you can read, such as `~/.ssh`. For the stronger isolation:
+- **The system service** (`tpt-server.service`, above) runs as a throwaway
+  user with a read-only system and no access to `/home`. It needs root to set
+  up once, but doesn't change any system security setting.
+- **Or keep the user service** and let systemd sandbox it. Allow user
+  namespaces for systemd's service starter only, with an AppArmor rule:
+  `profile systemd-executor-userns /usr/lib/systemd/systemd-executor
+  flags=(unconfined) { userns, }`. The previous version of this unit then
+  hides your home folder, keeping only the room's folder.
 
 ## What remains
 
