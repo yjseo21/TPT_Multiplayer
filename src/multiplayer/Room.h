@@ -104,5 +104,10 @@ private:
     void PublishFrames(const std::vector<std::shared_ptr<Peer>> &active);
     void Autosave();
     void Stats(const std::vector<std::shared_ptr<Peer>> &active);
+    // Since the last stats line: join snapshots captured (time on the room
+    // thread) and the longest Step(), which is what every player feels.
+    std::shared_ptr<SnapshotBuffers> snapshotBuffers = std::make_shared<SnapshotBuffers>();
+    uint64_t snapshotCaptures = 0;
+    double snapshotCaptureMs = 0, longestStepMs = 0;
 };
 }

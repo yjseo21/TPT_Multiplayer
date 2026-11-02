@@ -24,6 +24,9 @@ Room::Room(RoomConfig c, World &w, AutosaveStore *a, Journal *j) :
     nextFrame = now; nextStats = now + std::chrono::seconds(5);
     nextAutosave = now + std::chrono::seconds(config.autosaveInterval);
     framePeriod = std::chrono::nanoseconds(1000000000 / config.updates);
+    // Warm one snapshot buffer now, so even the first join is a fast copy.
+    try { snapshotBuffers->Give(CaptureExactCheckpointRaw(world)); }
+    catch (const std::exception &) {} // reported, if it persists, when a player joins
 }
 Room::~Room() { Close(); }
 void Room::Close()
@@ -380,7 +383,10 @@ void Room::BootstrapReplicas(const std::vector<std::shared_ptr<Peer>> &active)
     {
         try
         {
-            auto snapshot = std::make_shared<const std::string>(EncodeExactCheckpoint(world));
+            // Only the raw capture runs here; compression happens on the sender threads.
+            auto began = MonotonicSeconds();
+            auto snapshot = std::make_shared<CheckpointSource>(CaptureExactCheckpointRaw(world, snapshotBuffers->Take()), snapshotBuffers);
+            snapshotCaptures += 1; snapshotCaptureMs += (MonotonicSeconds()-began)*1000;
             for (auto &p : active) if (p->replica && p->needsReplicaBootstrap && !p->closed)
             {
                 p->QueueCheckpoint(snapshot,world.tick,world.revision,world.resetGeneration,world.paused);
@@ -502,7 +508,10 @@ void Room::Stats(const std::vector<std::shared_ptr<Peer>> &active)
         std::cout << "tick=" << world.tick << " revision=" << world.revision << " players=" << active.size()
             << " sim_hz=" << simHz << " tick_ms=" << tickMs
             << " full=" << full << " delta=" << delta << " repeat=" << repeats << " webp=" << webp
-            << " active_connection_bytes_sent=" << sent << std::endl;
+            << " active_connection_bytes_sent=" << sent
+            << " longest_step_ms=" << longestStepMs << " snapshots=" << snapshotCaptures
+            << " snapshot_capture_ms=" << (snapshotCaptures ? snapshotCaptureMs/snapshotCaptures : 0.0) << std::endl;
+        longestStepMs = 0; snapshotCaptures = 0; snapshotCaptureMs = 0;
         nextStats = Clock::now() + std::chrono::seconds(5);
     }
 }
@@ -521,6 +530,7 @@ void Room::ApplyEarly()
 }
 void Room::Step()
 {
+    auto began = MonotonicSeconds();
     auto active = CollectPeers();
     BroadcastPresence(active);
     ApplyRequests(active);
@@ -530,6 +540,7 @@ void Room::Step()
     Measure();
     PublishFrames(active);
     Autosave();
+    longestStepMs = std::max(longestStepMs, (MonotonicSeconds()-began)*1000);
     Stats(active);
 }
 }

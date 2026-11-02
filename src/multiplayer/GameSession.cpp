@@ -86,6 +86,8 @@ std::string GameSession::Status()
 {
     auto sample = session.Sample();
     std::string status = sample["status"].asString();
+    if (status == "TOO SLOW")
+        status = "TOO SLOW FOR THIS ROOM (" + std::to_string(int(sample["behindSeconds"].asDouble())) + " s behind)";
     std::string line = "Room " + session.Options().url + " | " + status;
     unsigned players = session.Players().size();
     if (players) line += " | " + std::to_string(players) + (players == 1 ? " player" : " players");

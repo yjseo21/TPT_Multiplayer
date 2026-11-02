@@ -14,7 +14,9 @@ class World;
 // This is NOT a portable cross-build deterministic simulation guarantee.
 // Raw capture accesses mutable simulation state and MUST remain on the owner
 // thread. Compression only consumes immutable bytes and may be offloaded.
-std::string CaptureExactCheckpointRaw(World &world);
+// buffer: storage to reuse (its contents are discarded). Reusing one avoids the
+// cost of fresh memory for every capture, which dominates on some systems.
+std::string CaptureExactCheckpointRaw(World &world, std::string buffer = {});
 std::string CompressExactCheckpointRaw(std::string_view raw);
 std::string EncodeExactCheckpoint(World &world);
 void RestoreExactCheckpoint(World &world, std::string_view packet);

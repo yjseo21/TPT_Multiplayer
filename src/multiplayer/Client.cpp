@@ -34,6 +34,7 @@ struct Options
     // and tick seals; physics and rendering run on this computer.
     bool localSim = false;
     uint64_t debugCorruptTick = 0; // test-only: perturb local state once to exercise resync
+    double debugStepDelayMs = 0;   // test-only: a slower computer
     bool listTools = false;
     std::string tool, commands;
 };
@@ -76,6 +77,11 @@ Options Arguments(int argc, char **argv)
             size_t end; o.debugCorruptTick = std::stoull(v, &end);
             if (end != v.size() || !o.debugCorruptTick) throw std::runtime_error("invalid debug tick");
         }
+        else if (a == "--debug-step-delay-ms")
+        {
+            size_t end; o.debugStepDelayMs = std::stod(v, &end);
+            if (end != v.size() || !(o.debugStepDelayMs > 0 && o.debugStepDelayMs <= 1000)) throw std::runtime_error("invalid debug delay");
+        }
         else if (a == "--view")
         {
             if (v != "0" && v != "1" && v != "2") throw std::runtime_error("invalid view");
@@ -93,6 +99,7 @@ Options Arguments(int argc, char **argv)
         }
         else throw std::runtime_error("unknown option: " + a);
     }
+    if (o.debugStepDelayMs && !o.localSim) throw std::runtime_error("--debug-step-delay-ms requires --local-sim");
     if (o.debugCorruptTick && !o.localSim) throw std::runtime_error("--debug-corrupt-at-tick requires --local-sim");
     if (o.headless && !o.frames && !o.runFor) throw std::runtime_error("--headless requires --frames or --run-for");
     std::string protocol, host, path, query;
@@ -220,6 +227,7 @@ int main(int argc, char **argv)
         sessionOptions.roomToken = Env("TPT_ROOM_TOKEN"); sessionOptions.adminToken = Env("TPT_ADMIN_TOKEN");
         sessionOptions.localSim = options.localSim; sessionOptions.reconnect = options.reconnect;
         sessionOptions.view = options.view; sessionOptions.debugCorruptTick = options.debugCorruptTick;
+        sessionOptions.debugStepDelayMs = options.debugStepDelayMs;
         sessionOptions.serverErrorsFatal = !options.commands.empty();
         Session session(sessionOptions);
         // The picture of a local-simulation session is rendered here.

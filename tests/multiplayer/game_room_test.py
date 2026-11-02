@@ -74,6 +74,7 @@ STEPS = [
     dict(at=13.5, do="mark", name="before-leave"),
     # Leave, then join again through the dialog, which remembers the room.
     dict(at=13.6, do="leave"),
+    dict(at=13.9, do="mark", name="left"),
     dict(at=14.2, do="dialog"),
     dict(at=14.5, do="dialogjoin"),
     dict(at=16.0, do="quit", synced=True),  # once the rejoin has synchronized (slow CI machines)
@@ -136,7 +137,7 @@ def main():
             # Rejoined through the dialog: a fresh, synchronized connection.
             assert final["inRoom"] and final["showingRoom"] and final["shownIsRoomWorld"], final
             assert final["resyncs"] == 0 and final["status"] == "PAUSED", final
-            assert any(r.get("inRoom") is False for r in g), "leaving the room was never seen"
+            assert [r["inRoom"] for r in g if r.get("mark") == "left"] == [False], "leaving the room was never seen"
             marks = [r for r in g if r.get("mark") == "before-leave"]
             assert len(marks) == 1, g
             before = marks[0]

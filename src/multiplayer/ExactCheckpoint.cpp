@@ -7,7 +7,9 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -30,16 +32,21 @@ class Writer
 public:
     static constexpr bool Reading = false;
     std::string bytes;
+    // Capture runs on the room's thread: one append per value, into a buffer
+    // sized for a full world, rather than one checked push per byte.
+    explicit Writer(std::string buffer) : bytes(std::move(buffer)) { bytes.clear(); bytes.reserve(26U * 1024 * 1024); }
     void Byte(uint8_t &v) { bytes.push_back(char(v)); }
-    void Unsigned(uint32_t &v)
-    {
-        for (int i=0;i<4;++i) bytes.push_back(char(v >> (8*i)));
-    }
-    void Wide(uint64_t &v)
-    {
-        for (int i=0;i<8;++i) bytes.push_back(char(v >> (8*i)));
-    }
+    void Unsigned(uint32_t &v) { Append(v); }
+    void Wide(uint64_t &v) { Append(v); }
+    void Raw(const void *data, size_t size) { bytes.append(static_cast<const char *>(data), size); }
     void End() {}
+private:
+    template<class T> void Append(T v)
+    {
+        char little[sizeof(T)];
+        for (size_t i=0;i<sizeof(T);++i) little[i] = char(v >> (8*i));
+        bytes.append(little, sizeof(T));
+    }
 };
 class Reader
 {
@@ -65,11 +72,29 @@ public:
         v = 0;
         for (int i=0;i<8;++i) v |= uint64_t(uint8_t(bytes[offset++])) << (8*i);
     }
+    void Raw(void *data, size_t size)
+    {
+        if (bytes.size()-offset < size) throw std::runtime_error("checkpoint truncated");
+        std::memcpy(data, bytes.data()+offset, size); offset += size;
+    }
     void End()
     {
         if (offset != bytes.size()) throw std::runtime_error("checkpoint has trailing state data");
     }
 };
+// The format is little-endian, field by field. On little-endian machines, arrays
+// of 4-byte values, and particles (fourteen 4-byte fields, in format order),
+// are already laid out as the format: they are copied in one piece.
+template<class T> constexpr bool BulkValue = std::endian::native == std::endian::little &&
+    (std::is_same_v<T, int> || std::is_same_v<T, unsigned int> || std::is_same_v<T, float>) && sizeof(T) == 4;
+constexpr bool ParticlePacked = std::endian::native == std::endian::little && sizeof(Particle) == 56 &&
+    std::is_trivially_copyable_v<Particle> && sizeof(int) == 4 && sizeof(float) == 4 &&
+    offsetof(Particle, type) == 0 && offsetof(Particle, life) == 4 && offsetof(Particle, ctype) == 8 &&
+    offsetof(Particle, x) == 12 && offsetof(Particle, y) == 16 && offsetof(Particle, vx) == 20 &&
+    offsetof(Particle, vy) == 24 && offsetof(Particle, temp) == 28 && offsetof(Particle, tmp3) == 32 &&
+    offsetof(Particle, tmp4) == 36 && offsetof(Particle, flags) == 40 && offsetof(Particle, tmp) == 44 &&
+    offsetof(Particle, tmp2) == 48 && offsetof(Particle, dcolour) == 52;
+template<class T> constexpr bool Bulk = BulkValue<T> || (std::is_same_v<T, Particle> && ParticlePacked);
 
 template<class A> void Field(A &a, bool &v)
 {
@@ -108,13 +133,16 @@ template<class A> void Field(A &a, float &v)
     a.Unsigned(bits);
     if constexpr (A::Reading) v = std::bit_cast<float>(bits);
 }
+template<class A> void Field(A &a, Particle &p);
 template<class A, class T, size_t N> void Field(A &a, T (&values)[N])
 {
-    for (auto &value : values) Field(a, value);
+    if constexpr (Bulk<T>) a.Raw(values, sizeof(values));
+    else for (auto &value : values) Field(a, value);
 }
 template<class A, class T, size_t N> void Field(A &a, std::array<T,N> &values)
 {
-    for (auto &value : values) Field(a, value);
+    if constexpr (Bulk<T>) a.Raw(values.data(), sizeof(T)*N);
+    else for (auto &value : values) Field(a, value);
 }
 template<class A> void Field(A &a, Particle &p)
 {
@@ -192,7 +220,7 @@ template<class A> void State(A &a, World &w)
         throw std::runtime_error("bad particle allocation metadata");
     // Preserve even slots beyond active: they can contain stale values which
     // must not be silently changed by checkpoint/recovery.
-    for (auto &p : s.parts.data) Field(a,p);
+    Field(a,s.parts.data);
     if constexpr (A::Reading) s.parts.RestoreExactFreeList(freeHead,active);
     Field(a,s.pmap); Field(a,s.photons); Field(a,s.pmap_count);
     Field(a,s.pv); Field(a,s.vx); Field(a,s.vy); Field(a,s.hv);
@@ -269,9 +297,9 @@ uint32_t Get32(std::string_view packet, size_t at)
 }
 }
 
-std::string CaptureExactCheckpointRaw(World &w)
+std::string CaptureExactCheckpointRaw(World &w, std::string buffer)
 {
-    Writer writer;
+    Writer writer(std::move(buffer));
     State(writer,w);
     if (writer.bytes.empty() || writer.bytes.size()>MaxUncompressed)
         throw std::runtime_error("uncompressed checkpoint exceeds maximum size");

@@ -11,11 +11,57 @@
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <vector>
 #include <string>
 #include <thread>
+#include <mutex>
+#include "ExactCheckpoint.h"
 
 namespace multiplayer
 {
+// Raw snapshot buffers kept between joins. Fresh memory for a 25 MB capture
+// costs several times more than the capture itself on some systems.
+class SnapshotBuffers
+{
+public:
+    std::string Take()
+    {
+        std::lock_guard lock(mutex);
+        if (free.empty()) return {};
+        auto buffer = std::move(free.back()); free.pop_back();
+        return buffer;
+    }
+    void Give(std::string buffer)
+    {
+        std::lock_guard lock(mutex);
+        if (free.size() < 2) free.push_back(std::move(buffer));
+    }
+private:
+    std::mutex mutex;
+    std::vector<std::string> free;
+};
+// A join snapshot. The room thread only captures the raw state (a fast copy);
+// the first sender that needs it compresses it on its own thread, once, so a
+// joining player never stalls the room for everyone else.
+class CheckpointSource
+{
+public:
+    CheckpointSource(std::string raw, std::shared_ptr<SnapshotBuffers> buffers) :
+        raw(std::move(raw)), buffers(std::move(buffers)) {}
+    std::shared_ptr<const std::string> Packet()
+    {
+        std::call_once(once, [this] {
+            packet = std::make_shared<const std::string>(CompressExactCheckpointRaw(raw));
+            buffers->Give(std::move(raw)); raw = {};
+        });
+        return packet;
+    }
+private:
+    std::string raw;
+    std::shared_ptr<SnapshotBuffers> buffers;
+    std::once_flag once;
+    std::shared_ptr<const std::string> packet;
+};
 // Each sender encodes against its own last successfully sent frame. Unsent captures
 // can be replaced freely. Adaptive ACK gating bounds the receiver backlog.
 struct Peer
@@ -41,6 +87,7 @@ struct Peer
     // and queues a checkpoint_begin marker under the same mutex. Commits and
     // tick seals queue behind it, in strict WebSocket ordering.
     std::shared_ptr<const std::string> checkpoint;
+    std::shared_ptr<CheckpointSource> checkpointSource; // queued, not compressed yet
     size_t checkpointOffset = 0;
     uint64_t checkpointId = 0;
     bool checkpointStarted = false, checkpointEnding = false;
@@ -62,20 +109,20 @@ struct Peer
 
     Peer(std::weak_ptr<ix::WebSocket> s, uint32_t i, UploadBudget &u, int updates) : socket(s), id(i), upload(u), pacer(updates) {}
     void Start();
-    void QueueCheckpoint(std::shared_ptr<const std::string> data,
+    void QueueCheckpoint(std::shared_ptr<CheckpointSource> source,
         uint64_t tick, uint64_t revision, uint64_t resetGeneration, bool paused)
     {
         std::lock_guard lock(mutex);
-        if (!replica || !data || data->empty() || checkpoint || checkpointEnding ||
+        if (!replica || !source || checkpoint || checkpointSource || checkpointEnding ||
             controls.size() >= 30) throw std::runtime_error("checkpoint transfer already queued");
         FlushSealLocked();
-        checkpoint = std::move(data); checkpointOffset = 0; checkpointStarted = false;
+        checkpointSource = std::move(source); checkpointOffset = 0; checkpointStarted = false;
         // Transfer ID is unique within a connection; reconnect always starts
         // another WebSocket with new state.
         ++checkpointId;
         Json::Value begin;
         begin["type"] = "checkpoint_begin"; begin["id"] = Json::UInt64(checkpointId);
-        begin["bytes"] = Json::UInt64(checkpoint->size());
+        // "bytes" is filled in by the sender once the snapshot is compressed.
         begin["tick"] = Json::UInt64(tick); begin["revision"] = Json::UInt64(revision);
         begin["resetGeneration"] = Json::UInt64(resetGeneration);
         begin["paused"] = paused;

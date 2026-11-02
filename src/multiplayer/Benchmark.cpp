@@ -1,4 +1,5 @@
 #include "World.h"
+#include "ExactCheckpoint.h"
 #include "Canvas.h"
 #include "simulation/SimulationData.h"
 #include "simulation/ElementClasses.h"
@@ -65,5 +66,23 @@ int main()
         std::cout << name << ',' << created << ',' << std::fixed << std::setprecision(2)
             << tickMs/steps << ',' << encodeMs/samples << ',' << decodeMs/samples << ',' << meanBytes << ','
             << meanBytes*20.0*8/1000000 << ',' << (canvasBytes/double(samples))*20*8/1000000 << ',' << renderMs/samples << ',' << deltaMs/samples << std::endl;
+        // Join snapshot: the capture runs on the room's thread, compression does not.
+        constexpr int captures = 5;
+        double captureMs = 0, compressMs = 0;
+        size_t rawBytes = 0, packetBytes = 0;
+        std::string reused;
+        for (int i = 0; i < captures; ++i)
+        {
+            auto begin = Clock::now();
+            auto raw = CaptureExactCheckpointRaw(world, std::move(reused));
+            captureMs += std::chrono::duration<double, std::milli>(Clock::now()-begin).count();
+            begin = Clock::now();
+            auto packet = CompressExactCheckpointRaw(raw);
+            compressMs += std::chrono::duration<double, std::milli>(Clock::now()-begin).count();
+            rawBytes = raw.size(); packetBytes = packet.size();
+            reused = std::move(raw);
+        }
+        std::cout << "  snapshot: capture_ms=" << captureMs/captures << " compress_ms=" << compressMs/captures
+            << " raw_bytes=" << rawBytes << " packet_bytes=" << packetBytes << std::endl;
     }
 }

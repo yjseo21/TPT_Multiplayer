@@ -180,7 +180,9 @@ def scenario_divergence_recovery():
             resynced = [r for r in samples if r["resyncs"] == 1 and r["status"] in ("LOCAL SIM", "SERVER SLOW")]
             assert resynced and resynced[-1]["verifiedHashes"] > resynced[0]["verifiedHashes"], samples
             honest = rows(root / "honest.jsonl")[-1]
-            assert honest["resyncs"] == 0 and honest["connections"] == 1 and honest["verifiedHashes"] >= 5, honest
+            # One fingerprint per 60 ticks; an overloaded CI machine may run the room slower.
+            assert honest["resyncs"] == 0 and honest["connections"] == 1, honest
+            assert honest["verifiedHashes"] >= max(2, honest["localTick"] // 60 - 1), honest
         finally:
             for proc, _ in procs:
                 if proc.poll() is None:

@@ -21,6 +21,7 @@ void Peer::Start()
             Json::Value control;
             std::shared_ptr<const CanvasFrame> frame;
             std::string replicaChunk;
+            std::shared_ptr<CheckpointSource> source;
             uint64_t encodingGeneration = 0;
             {
                 std::unique_lock lock(mutex);
@@ -52,10 +53,18 @@ void Peer::Start()
                 else if (!controls.empty())
                 {
                     control = std::move(controls.front()); controls.pop_front();
-                    if (control["type"] == "checkpoint_begin") checkpointStarted = true;
+                    if (control["type"] == "checkpoint_begin") source = std::move(checkpointSource);
                 }
                 else if (!presence.isNull()) { control = std::move(presence); presence = Json::Value(); }
                 else if (available()) { frame = latest; encodingGeneration = generation; }
+            }
+            if (source)
+            {
+                // Compress here, off the room thread; later messages wait behind it.
+                auto data = source->Packet();
+                control["bytes"] = Json::UInt64(data->size());
+                std::lock_guard lock(mutex);
+                checkpoint = std::move(data); checkpointStarted = true;
             }
             if (!control.isNull())
             {

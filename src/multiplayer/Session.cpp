@@ -12,6 +12,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
+#include <thread>
 
 namespace multiplayer
 {
@@ -21,6 +22,14 @@ namespace
 std::string Env(const char *name) { auto p = std::getenv(name); return p ? p : ""; }
 }
 #endif
+namespace
+{
+// Local physics per frame while catching up, so a frame stays responsive.
+constexpr double CatchUpBudget = .012;
+// This far behind, a computer that cannot keep up jumps to the room's present;
+// at most this often, so a merely busy moment never causes repeated rejoins.
+constexpr double SkipAheadSeconds = 10, SkipAheadInterval = 30;
+}
 // Written by the socket's callback thread, drained by Update().
 struct Session::Mailbox
 {
@@ -213,7 +222,7 @@ void Session::Lost()
         mailbox->packets.clear(); mailbox->messages.clear(); mailbox->ordered.clear();
         mailbox->incomingBytes = 0; mailbox->disconnected = mailbox->permanentFailure = false;
     }
-    RetireReplica(); desyncWaitUntil = 0;
+    RetireReplica(); desyncWaitUntil = 0; behindSince = 0; behindSeconds = 0;
     edits.Disconnect(); sentAt.clear();
     ready = admin = roomLocked = waitingForKeyframe = false;
     canvas.id = 0; attempting = false;
@@ -370,9 +379,34 @@ void Session::Pump()
         // extra tick per frame, so the edit shows as soon as its tick is sealed.
         // Bounded: a heavy world never runs more than two steps in one frame.
         if (!sentAt.empty() && steps < backlog) steps = std::min<uint64_t>(backlog, std::max<uint64_t>(steps, 2));
-        tickCredit = std::max(tickCredit-double(steps), -1.0);
-        if (steps == backlog) tickCredit = std::min(tickCredit, 1.0);
-        replica->Pump(steps);
+        // At most CatchUpBudget of local physics per frame (always one tick when
+        // due): a slow computer stays responsive and falls behind visibly,
+        // instead of freezing ever longer on catch-up.
+        uint64_t ran = 0;
+        if (!steps) replica->Pump(0); // edits and seals at the current tick
+        while (ran < steps)
+        {
+            if (options.debugStepDelayMs) std::this_thread::sleep_for(std::chrono::duration<double, std::milli>(options.debugStepDelayMs));
+            auto stepped = replica->Pump(1);
+            if (!stepped) break;
+            ran += stepped;
+            if (MonotonicSeconds()-now > CatchUpBudget) break;
+        }
+        tickCredit = std::max(tickCredit-double(ran), -1.0);
+        if (ran == backlog) tickCredit = std::min(tickCredit, 1.0);
+        behindSeconds = replica->Backlog()/tickRate;
+        if (behindSeconds < 1) behindSince = 0;
+        else if (!behindSince) behindSince = now;
+        if (behindSeconds > SkipAheadSeconds && now-lastSkipAhead > SkipAheadInterval)
+        {
+            // Rejoin from a fresh snapshot of the room's present. Cheap for the
+            // room: only a raw copy happens on its thread.
+            lastSkipAhead = now; ++skipAheads;
+            std::cerr << "This computer is " << int(behindSeconds) << " s behind the room; jumping ahead" << std::endl;
+            RetireReplica(); canvas.id = 0;
+            Fail("this computer cannot keep up with the room; jumping to its present");
+            return;
+        }
         if (options.debugCorruptTick && !corruptionInjected && replica->world.tick >= options.debugCorruptTick)
         {
             // Test hook: silently change local physics state once. The next
@@ -455,6 +489,7 @@ void Session::AddLocalStatus(Json::Value &out) const
     if (!options.localSim) return;
     out["localSimulation"] = true;
     out["resyncs"] = Json::UInt64(resyncs);
+    out["skipAheads"] = Json::UInt64(skipAheads);
     out["seals"] = Json::UInt64(sealsBefore+(replica ? replica->Seals() : 0));
     out["verifiedHashes"] = Json::UInt64(checksBefore+(replica ? replica->Checks() : 0));
     out["appliedCommands"] = Json::UInt64(editsBefore+(replica ? replica->Edits() : 0));
@@ -468,7 +503,9 @@ void Session::AddLocalStatus(Json::Value &out) const
         {
             bool slow = !out["simHz"].isNull() && !replica->world.paused &&
                 out["simHz"].asDouble() < out["targetHz"].asDouble()*.85;
-            out["status"] = replica->world.paused ? "PAUSED" : (slow ? "SERVER SLOW" : "LOCAL SIM");
+            bool tooSlow = behindSince && MonotonicSeconds()-behindSince > 3;
+            out["status"] = replica->world.paused ? "PAUSED" : tooSlow ? "TOO SLOW" : (slow ? "SERVER SLOW" : "LOCAL SIM");
+            out["behindSeconds"] = behindSeconds;
             out["paused"] = replica->world.paused;
         }
     }

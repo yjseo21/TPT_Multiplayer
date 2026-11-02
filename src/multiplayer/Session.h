@@ -25,6 +25,7 @@ struct SessionOptions
     bool serverErrorsFatal = false; // scripted runs: a rejected command ends the session
     int view = 0;
     uint64_t debugCorruptTick = 0; // test-only: perturb local state once to exercise resync
+    double debugStepDelayMs = 0;   // test-only: a slower computer (extra time per local tick)
 };
 
 // One player's connection to a room, independent of any user interface.
@@ -123,6 +124,10 @@ private:
     bool pausedSinceSeal = false;
     std::deque<std::pair<double, double>> sealGaps; // (time, seconds since the previous advance)
     uint64_t Lead() const;
+    // A computer that cannot keep up: behind the room by over a second for a
+    // while ("TOO SLOW"); far behind, it jumps to the room's present.
+    double behindSince = 0, lastSkipAhead = -100, behindSeconds = 0;
+    uint64_t skipAheads = 0;
 
     // Own-edit latency: from Send() until the edit is applied to the local world.
     std::map<uint64_t, double> sentAt;
