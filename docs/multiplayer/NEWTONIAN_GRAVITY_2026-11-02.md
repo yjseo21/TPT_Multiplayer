@@ -42,6 +42,17 @@ these properties:
 
   Flush-to-zero and denormals-are-zero come from `MatchGameFloatingPoint()`,
   the same as for all room physics.
+- **No fused multiply-add, even on ARM.** The pragmas aren't enough here:
+  clang's `-ffp-contract=fast`, part of `-ffast-math`, ignores them, and
+  ARM64 has fused multiply-add. The first CI run on Apple Silicon produced a
+  different digest. Every product that is then added now goes through
+  `Round()`, an empty `asm` statement that makes the compiler hold the rounded
+  product. It emits no instructions.
+  - This was checked by compiling on x86 with FMA enabled and the pragmas
+    removed. Without the barrier the digest changes; with it the pinned digest
+    is reproduced.
+  - CI then confirmed the same digest on GCC, MSVC and Apple clang, on x86-64
+    and ARM64. A solve takes about 4.8 ms.
 - **Cost:** about 3.6–3.9 ms per tick while the mass changes, on the
   development machine. Ticks where the mass is unchanged cost nothing.
 
