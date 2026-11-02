@@ -113,7 +113,7 @@ Mbps today); latency under netem, which needs root for `tc`; video clients
 still wait for the next frame (`--update-rate`, 50 ms at the default 20/s).
 
 ### P3. The real game joins a room
-Status 2 November: **P3a done** (`IN_GAME_P3A_2026-11-02.md`): join, show and switch, drawing tools routed, other paths refused, real-game test. Still open: Join dialog, player list, ghost preview, and the refused paths.
+Status 2 November: **P3a done** (`IN_GAME_P3A_2026-11-02.md`): join, show and switch, drawing tools routed, other paths refused, real-game test. **P3b done** (`IN_GAME_P3B_2026-11-02.md`): in-game room dialog (Ctrl+Shift+J), player list, other players' cursors, render-only preview of pending own edits, and the room keeps running under dialogs. Still open: stamps and pasting saves (P4), and the refused paths (P5).
 
 - `GameModel` gets a simulation host: **Local** (today's single-player,
   untouched) or **Session**. Switching canvases swaps the host. The

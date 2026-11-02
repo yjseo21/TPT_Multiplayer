@@ -1,4 +1,5 @@
 #pragma once
+#include <functional>
 #include <memory>
 #include <optional>
 #include <stack>
@@ -70,6 +71,10 @@ namespace ui
 		void Tick();
 		void SimTick();
 		void Draw();
+		// Runs on every simulation tick while another window is shown over
+		// backgroundOwner (multiplayer: a room keeps running under dialogs).
+		Window *backgroundOwner = nullptr;
+		std::function<void ()> backgroundTick;
 
 		void SetFps(float newFps);
 		float GetFps() const;

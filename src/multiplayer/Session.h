@@ -70,6 +70,8 @@ public:
     bool Disconnected() const;
     const EditSession &Edits() const { return edits; }
     uint64_t AcknowledgedRevision() const { return acknowledgedRevision; }
+    // The latest own edit (by sequence) applied to the local world on this connection.
+    uint64_t OwnCommitted() const { return ownCommitted; }
 
     // The latest picture. Video mode fills it from the stream; a local-simulation
     // presenter publishes its own renders so status and metrics stay meaningful.
@@ -124,6 +126,7 @@ private:
 
     // Own-edit latency: from Send() until the edit is applied to the local world.
     std::map<uint64_t, double> sentAt;
+    uint64_t ownCommitted = 0;
     std::vector<double> latencies; // since the last TakeEditLatencies()
     uint64_t latencySamples = 0;
     double latencyTotalMs = 0, latencyMaxMs = 0;

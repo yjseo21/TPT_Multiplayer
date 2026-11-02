@@ -199,6 +199,10 @@ void Engine::SimTick()
 	{
 		state_->DoSimTick();
 	}
+	if (backgroundTick && state_ != backgroundOwner)
+	{
+		backgroundTick();
+	}
 }
 
 void Engine::Draw()

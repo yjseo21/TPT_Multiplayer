@@ -55,10 +55,18 @@ STEPS = [
     dict(at=6.4, do="points", x1=100, y1=200, x2=100, y2=200, held=False),
     dict(at=6.5, do="points", x1=100, y1=200, x2=150, y2=200, held=True),
     dict(at=8.4, do="toggle"),  # own canvas for 2 s: at least one log row
+    # The room dialog over the game: the room keeps running underneath.
+    dict(at=8.6, do="dialog"),
+    dict(at=10.8, do="dialogcancel"),
     # Administrator controls become room commands.
-    dict(at=8.9, do="pause", paused=True),
-    dict(at=9.9, do="step"),
-    dict(at=11.9, do="quit"),
+    dict(at=11.0, do="pause", paused=True),
+    dict(at=12.0, do="step"),
+    dict(at=13.5, do="mark", name="before-leave"),
+    # Leave, then join again through the dialog, which remembers the room.
+    dict(at=13.6, do="leave"),
+    dict(at=14.2, do="dialog"),
+    dict(at=14.5, do="dialogjoin"),
+    dict(at=17.5, do="quit"),
 ]
 
 
@@ -78,7 +86,7 @@ def main():
                 time.sleep(.1)
             watcher_env = dict(env); watcher_env.pop("TPT_ADMIN_TOKEN")
             watcher = subprocess.Popen([CLIENT, "--url", f"ws://127.0.0.1:{port}", "--name", "Watcher", "--headless",
-                                        "--local-sim", "--run-for", "18", "--no-reconnect",
+                                        "--local-sim", "--run-for", "24", "--no-reconnect",
                                         "--metrics", str(root / "watcher.jsonl")],
                                        cwd=root, env=watcher_env, stdout=(root / "watcher.out").open("w"),
                                        stderr=subprocess.STDOUT)
@@ -101,7 +109,7 @@ def main():
                                     stdout=(root / "game.out").open("w"), stderr=subprocess.STDOUT)
             procs.append(game)
             try:
-                game.wait(timeout=40)
+                game.wait(timeout=50)
             except subprocess.TimeoutExpired:
                 game.kill(); game.wait()
                 log_rows = (root / "game.jsonl").read_text().splitlines() if (root / "game.jsonl").exists() else []
@@ -115,11 +123,27 @@ def main():
             g = rows(root / "game.jsonl")
             final = g[-1]
             assert final.get("final"), final
-            assert final["resyncs"] == 0 and final["verifiedHashes"] >= 3, final
-            assert final["status"] == "PAUSED" and final["pendingEdits"] == 0, (final, output[-3000:])
-            assert final["editLatencySamples"] >= 5, final
-            assert "not available in rooms" in final["lastNotice"], final["lastNotice"]
+            # Rejoined through the dialog: a fresh, synchronized connection.
+            assert final["inRoom"] and final["showingRoom"] and final["shownIsRoomWorld"], final
+            assert final["resyncs"] == 0 and final["status"] == "PAUSED", final
+            assert any(r.get("inRoom") is False for r in g), "leaving the room was never seen"
+            marks = [r for r in g if r.get("mark") == "before-leave"]
+            assert len(marks) == 1, g
+            before = marks[0]
+            assert before["resyncs"] == 0 and before["verifiedHashes"] >= 3, before
+            assert before["status"] == "PAUSED" and before["pendingEdits"] == 0, (before, output[-3000:])
+            assert before["editLatencySamples"] >= 5, before
+            assert "not available in rooms" in before["lastNotice"], before["lastNotice"]
             assert final["ownParts"] > 0, "drawing on the own canvas did not reach the own world"
+            # Player list in the HUD, and the preview of edits still in flight.
+            assert "Game (you, admin)" in before["roomStatus"] and "Watcher" in before["roomStatus"], before["roomStatus"]
+            assert max(r.get("previewPeak", 0) for r in g) > 0, "no pending edit was ever previewed"
+            assert final["previewPeak"] == 0 or final["pendingEdits"] > 0, final
+            # Under the dialog the room's world kept advancing.
+            under = [r for r in g if r.get("dialogOpen") and r.get("inRoom") and r.get("status") != "PAUSED"]
+            assert len(under) >= 2 and under[-1]["localTick"] > under[0]["localTick"], [(r.get("elapsedSeconds"), r.get("localTick")) for r in under]
+            prefs = json.loads((game_dir / "powder.pref").read_text())
+            assert prefs.get("Multiplayer", {}).get("Room") == f"ws://127.0.0.1:{port}", prefs
             assert any("too large" in r.get("lastNotice", "") for r in g), [(round(r.get("elapsedSeconds", -1), 2), r.get("lastNotice"), r.get("appliedCommands")) for r in g]
             assert any(r.get("shownIsRoomWorld") for r in g), "the room's world was never shown"
             assert any(r.get("showingRoom") is False for r in g), "the own canvas was never shown"
@@ -128,7 +152,7 @@ def main():
 
             w = rows(root / "watcher.jsonl")[-1]
             assert w["resyncs"] == 0 and w["status"] == "PAUSED", w
-            assert w["appliedCommands"] == final["appliedCommands"] >= 9, (w["appliedCommands"], final["appliedCommands"])
+            assert w["appliedCommands"] == before["appliedCommands"] >= 9, (w["appliedCommands"], before["appliedCommands"])
             text = (root / "server.log").read_text()
             assert "diverged" not in text, text
         finally:
@@ -137,8 +161,8 @@ def main():
                     p.kill(); p.wait()
             server.terminate(); server.wait(timeout=10); log.close()
     print("PASS: the real game joins a room, edits through its own controller, keeps its own canvas, "
-          f"and agrees with another player ({final['appliedCommands']} edits, {final['verifiedHashes']} fingerprints, "
-          f"own-edit latency mean {final['editLatencyMeanMs']:.1f} ms)")
+          f"agrees with another player, and leaves and rejoins through its dialog ({before['appliedCommands']} edits, "
+          f"{before['verifiedHashes']} fingerprints, own-edit latency mean {before['editLatencyMeanMs']:.1f} ms)")
 
 
 if __name__ == "__main__":

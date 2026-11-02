@@ -309,8 +309,10 @@ void Session::HandleOrdered(bool binary, const std::string &bytes, double receiv
         RetireReplica(); replica = std::make_unique<ReplicaState>(); replica->SetPaced(true);
         tickCredit = 0; rateSince = 0;
         lastSealed = 0; lastSealAdvance = 0; pausedSinceSeal = false; sealGaps.clear();
+        ownCommitted = 0;
         replica->committed = [this](const Json::Value &commit) {
             if (commit["actor"].asUInt() != ownPlayer) return;
+            ownCommitted = std::max(ownCommitted, commit["command"]["seq"].asUInt64());
             auto it = sentAt.find(commit["command"]["seq"].asUInt64());
             if (it == sentAt.end()) return;
             auto ms = (MonotonicSeconds()-it->second)*1000;

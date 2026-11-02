@@ -54,6 +54,7 @@ void GameSession::Flush()
     {
         auto &next = outbox.front();
         if (!session.Send(next.command)) break;
+        if (next.command["op"] == "tool") unapplied.push_back({std::move(next.command), session.Edits().Last(), now});
         workTokens -= next.cost; operationTokens -= 1;
         queuedWork -= next.cost;
         outbox.pop_front();
@@ -64,8 +65,12 @@ bool GameSession::Update()
 {
     session.Update();
     // Unsent edits belong to the connection: never carried into a resynchronized world.
-    if (!session.Synchronized()) { outbox.clear(); queuedWork = 0; }
+    if (!session.Synchronized()) { outbox.clear(); queuedWork = 0; unapplied.clear(); }
     Flush();
+    // A rejected edit is never committed: its preview lapses after a few seconds.
+    auto now = MonotonicSeconds();
+    while (!unapplied.empty() && (unapplied.front().seq <= session.OwnCommitted() || now-unapplied.front().sentAt > 3))
+        unapplied.pop_front();
     auto *replica = session.Replica();
     Simulation *next = session.Synchronized() && replica ? replica->world.sim.get() : placeholder.get();
     if (next == shown) return false;

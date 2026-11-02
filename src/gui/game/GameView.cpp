@@ -1,6 +1,9 @@
 #include "GameView.h"
 
 #include "Brush.h"
+#include "EllipseBrush.h"
+#include "RectangleBrush.h"
+#include "TriangleBrush.h"
 #include "tool/DecorationTool.h"
 #include "tool/PropertyTool.h"
 #include "Favorite.h"
@@ -2165,6 +2168,124 @@ void GameView::AfterSimDraw(const RenderableSimulation &sim)
 	ren->sim = nullptr;
 }
 
+void GameView::DrawRoomOverlay(Graphics *g)
+{
+	if (roomOverlay.ghosts.size())
+	{
+		// Every pending edit is stamped into one mask (a palette index per pixel),
+		// then blended once, so overlapping stamps do not darken each other.
+		ghostMask.assign(XRES * YRES, 0);
+		std::vector<RGB> palette;
+		auto lo = Vec2{ XRES, YRES }, hi = Vec2{ -1, -1 };
+		long budget = 4'000'000; // mask writes per frame; a preview may be partial, never slow
+		auto markRect = [&](Vec2<int> a, Vec2<int> b, unsigned char index) {
+			auto x0 = std::max(std::min(a.X, b.X), 0), x1 = std::min(std::max(a.X, b.X), XRES - 1);
+			auto y0 = std::max(std::min(a.Y, b.Y), 0), y1 = std::min(std::max(a.Y, b.Y), YRES - 1);
+			if (x0 > x1 || y0 > y1)
+				return;
+			budget -= long(x1 - x0 + 1) * (y1 - y0 + 1);
+			for (auto y = y0; y <= y1; ++y)
+				std::fill_n(&ghostMask[y * XRES + x0], x1 - x0 + 1, index);
+			lo = { std::min(lo.X, x0), std::min(lo.Y, y0) };
+			hi = { std::max(hi.X, x1), std::max(hi.Y, y1) };
+		};
+		for (auto &ghost : roomOverlay.ghosts)
+		{
+			if (budget <= 0)
+				break;
+			auto found = std::find(palette.begin(), palette.end(), ghost.colour);
+			if (found == palette.end())
+			{
+				if (palette.size() == 255)
+					continue;
+				palette.push_back(ghost.colour);
+				found = palette.end() - 1;
+			}
+			auto index = (unsigned char)(found - palette.begin() + 1);
+			if (ghost.box)
+			{
+				auto a = ghost.a, b = ghost.b;
+				if (ghost.wall)
+				{
+					a = { std::min(a.X, b.X) / CELL * CELL, std::min(a.Y, b.Y) / CELL * CELL };
+					b = { std::max(ghost.a.X, b.X) / CELL * CELL + CELL - 1, std::max(ghost.a.Y, b.Y) / CELL * CELL + CELL - 1 };
+				}
+				markRect(a, b, index);
+				continue;
+			}
+			auto radius = ghost.radius;
+			std::vector<ui::Point> *offsets = nullptr;
+			if (!ghost.wall)
+			{
+				auto &cached = ghostBrushes[{ int(ghost.shape), radius.X, radius.Y }];
+				if (cached.empty())
+				{
+					std::unique_ptr<Brush> brush;
+					switch (ghost.shape)
+					{
+					case RoomOverlay::Ghost::Rectangle: brush = std::make_unique<RectangleBrush>(); break;
+					case RoomOverlay::Ghost::Triangle:  brush = std::make_unique<TriangleBrush>(); break;
+					default: brush = std::make_unique<EllipseBrush>(ghost.shape == RoomOverlay::Ghost::PerfectEllipse); break;
+					}
+					brush->SetRadius(radius);
+					for (auto offset : *brush)
+						cached.push_back(offset);
+				}
+				offsets = &cached;
+			}
+			// Stamps along the line, spaced by half the brush: close enough to look
+			// continuous, and bounded work for huge brushes.
+			auto delta = ghost.b - ghost.a;
+			int spacing = std::max(1, std::min(radius.X, radius.Y) / 2);
+			if (ghost.wall)
+				spacing = CELL;
+			int steps = std::max(std::abs(delta.X), std::abs(delta.Y)) / spacing + 1;
+			for (int i = 0; i <= steps && budget > 0; ++i)
+			{
+				auto p = ghost.a + Vec2{ delta.X * i / steps, delta.Y * i / steps };
+				if (ghost.wall)
+				{
+					auto cell = Vec2{ p.X / CELL * CELL, p.Y / CELL * CELL };
+					auto r = Vec2{ radius.X / CELL * CELL, radius.Y / CELL * CELL };
+					markRect(cell - r, cell + r + Vec2{ CELL - 1, CELL - 1 }, index);
+					continue;
+				}
+				budget -= long(offsets->size());
+				for (auto offset : *offsets)
+				{
+					auto q = p + offset;
+					if (q.X < 0 || q.X >= XRES || q.Y < 0 || q.Y >= YRES)
+						continue;
+					ghostMask[q.Y * XRES + q.X] = index;
+				}
+				lo = { std::min(lo.X, std::max(p.X - radius.X, 0)), std::min(lo.Y, std::max(p.Y - radius.Y, 0)) };
+				hi = { std::max(hi.X, std::min(p.X + radius.X, XRES - 1)), std::max(hi.Y, std::min(p.Y + radius.Y, YRES - 1)) };
+			}
+		}
+		for (auto y = lo.Y; y <= hi.Y; ++y)
+			for (auto x = lo.X; x <= hi.X; ++x)
+				if (auto m = ghostMask[y * XRES + x])
+					g->BlendPixel({ x, y }, palette[m - 1].WithAlpha(110));
+		if (ghostBrushes.size() > 64)
+			ghostBrushes.clear();
+	}
+	static const RGB cursorColours[] = { 0xFF7070_rgb, 0x70C8FF_rgb, 0x80FF80_rgb, 0xFFD050_rgb };
+	for (auto &cursor : roomOverlay.cursors)
+	{
+		auto colour = cursorColours[cursor.player % 4];
+		auto r = std::max(cursor.radius, 2);
+		if (cursor.drawing)
+			g->BlendFilledEllipse(cursor.position, { r, r }, colour.WithAlpha(60));
+		g->BlendEllipse(cursor.position, { r, r }, colour.WithAlpha(220));
+		g->BlendPixel(cursor.position, colour.WithAlpha(255));
+		auto labelAt = cursor.position + Vec2{ r + 4, -4 };
+		auto width = Graphics::TextSize(cursor.name).X;
+		labelAt.X = std::min(labelAt.X, XRES - width - 2);
+		g->BlendFilledRect(RectSized(labelAt - Vec2{ 2, 2 }, Vec2{ width + 3, 13 }), 0x000000_rgb .WithAlpha(110));
+		g->BlendText(labelAt, cursor.name, colour.WithAlpha(230));
+	}
+}
+
 void GameView::OnDraw()
 {
 	Graphics * g = GetGraphics();
@@ -2195,6 +2316,7 @@ void GameView::OnDraw()
 	}
 
 	std::copy_n(rendererFrame->data(), rendererFrame->Size().X * rendererFrame->Size().Y, g->Data());
+	DrawRoomOverlay(g);
 
 	if (showBrush && selectMode == SelectNone && (!zoomEnabled || zoomCursorFixed) && activeBrush && (isMouseDown || (currentMouse.X >= 0 && currentMouse.X < XRES && currentMouse.Y >= 0 && currentMouse.Y < YRES)))
 	{

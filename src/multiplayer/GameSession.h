@@ -59,6 +59,15 @@ public:
 
     // Commands accepted but not yet sent (paced to the server's editing budget).
     size_t Queued() const { return outbox.size(); }
+    // The player's own tool commands not yet applied to the shown world, oldest
+    // first: sent ones awaiting their commit, then queued ones. Render-only preview.
+    template<class Visit> void ForEachPending(Visit visit) const
+    {
+        for (auto &edit : unapplied) visit(edit.command);
+        for (auto &edit : outbox) visit(edit.command);
+    }
+    size_t PendingCount() const { return unapplied.size() + outbox.size(); }
+    unsigned OwnPlayer() const { return session.OwnPlayer(); }
 
 private:
     Session session;
@@ -68,6 +77,8 @@ private:
     // stroke arrives progressively instead of being refused or dropping the link.
     struct Outgoing { Json::Value command; double cost; };
     std::deque<Outgoing> outbox;
+    struct Unapplied { Json::Value command; uint64_t seq; double sentAt; };
+    std::deque<Unapplied> unapplied;
     double queuedWork = 0, workTokens, operationTokens, refilledAt;
     bool Enqueue(std::vector<Json::Value> commands, std::string &why);
     void Flush();

@@ -5,6 +5,7 @@ powder_files += files(
 	'GameController.cpp',
 	'GameModel.cpp',
 	'GameView.cpp',
+	'JoinRoomView.cpp',
 	'Menu.cpp',
 	'QuickOptions.cpp',
 	'ToolButton.cpp',

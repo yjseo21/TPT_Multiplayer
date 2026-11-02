@@ -5,8 +5,12 @@
 #include "simulation/Sample.h"
 #include "graphics/FindingElement.h"
 #include "graphics/RendererFrame.h"
+#include "graphics/Pixel.h"
+#include "gui/interface/Point.h"
 #include <ctime>
 #include <deque>
+#include <map>
+#include <tuple>
 #include <memory>
 #include <vector>
 #include <optional>
@@ -17,6 +21,31 @@
 enum DrawMode
 {
 	DrawPoints, DrawLine, DrawRect, DrawFill
+};
+
+// Multiplayer: drawn over a room's world. Other players' cursors, and a preview
+// of the player's own edits the room has not applied yet (render-only).
+struct RoomOverlay
+{
+	struct Cursor
+	{
+		ui::Point position;
+		int radius;
+		bool drawing;
+		unsigned player;
+		String name;
+	};
+	struct Ghost
+	{
+		enum Shape { Ellipse, PerfectEllipse, Rectangle, Triangle };
+		ui::Point a, b, radius;
+		Shape shape;
+		bool box;  // a filled rectangle between a and b, otherwise the brush along a line
+		bool wall; // in whole cells, like the wall brush
+		RGB colour;
+	};
+	std::vector<Cursor> cursors;
+	std::vector<Ghost> ghosts;
 };
 
 enum SelectMode
@@ -42,6 +71,7 @@ class VideoBuffer;
 class ToolButton;
 class GameController;
 class Brush;
+class Graphics;
 class GameModel;
 class GameView: public ui::Window
 {
@@ -68,6 +98,10 @@ private:
 
 	ui::Fade toolTipPresence{ ui::Fade::LinearProfile{ 120.f, 60.f }, 0, 0 };
 	String roomStatus; // multiplayer: shown under the FPS line
+	RoomOverlay roomOverlay;
+	std::vector<unsigned char> ghostMask;
+	std::map<std::tuple<int, int, int>, std::vector<ui::Point>> ghostBrushes; // (shape, rx, ry) -> offsets
+	void DrawRoomOverlay(Graphics *g);
 	String toolTip;
 	bool isToolTipFadingIn;
 	ui::Point toolTipPosition;
@@ -189,6 +223,9 @@ public:
 	ui::Point GetMousePosition();
 	void SetSample(SimulationSample sample);
 	void SetRoomStatus(String status) { roomStatus = status; }
+	String GetRoomStatus() const { return roomStatus; }
+	bool IsMouseDown() const { return isMouseDown; }
+	void SetRoomOverlay(RoomOverlay overlay) { roomOverlay = std::move(overlay); }
 	void SetHudEnable(bool hudState);
 	bool GetHudEnable();
 	void SetBrushEnable(bool hudState);

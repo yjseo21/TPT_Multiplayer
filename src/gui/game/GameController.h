@@ -13,6 +13,7 @@
 #include <vector>
 #include <utility>
 #include <memory>
+#include <optional>
 
 constexpr auto DEBUG_PARTS      = 0x0001;
 constexpr auto DEBUG_ELEMENTPOP = 0x0002;
@@ -81,6 +82,11 @@ private:
 	// player's own world is shown and the caller should apply it as usual.
 	bool RoomTool(int toolSelection, const char *action, ui::Point a, ui::Point b, bool dragging, bool useToolStrength);
 	void UpdateRoom();
+	void UpdateRoomOverlay();
+	void EndRoom(String why);
+	// Credentials of the latest join, offered again by the dialog (never saved).
+	ByteString lastRoomToken, lastAdminToken;
+	size_t roomGhostsPeak = 0; // largest preview since the last automation log row
 	struct RoomAutomation;
 	std::unique_ptr<RoomAutomation> roomAutomation;
 	void RunRoomAutomation();
@@ -239,8 +245,13 @@ public:
 	void SetToolIndex(ByteString identifier, std::optional<int> index);
 	void InitCommandInterface();
 
-	// Multiplayer. Credentials come from TPT_ROOM_TOKEN / TPT_ADMIN_TOKEN.
-	void JoinRoom(ByteString url, ByteString name);
+	// Multiplayer. Credentials not given come from TPT_ROOM_TOKEN / TPT_ADMIN_TOKEN.
+	// Joining while in a room leaves it first.
+	void JoinRoom(ByteString url, ByteString name, std::optional<ByteString> roomToken = std::nullopt,
+	              std::optional<ByteString> adminToken = std::nullopt);
+	void LeaveRoom();
+	// The in-game dialog (Ctrl+Shift+J): join a room, or leave the current one.
+	void OpenRoomDialog();
 	// Switch between the room's world and the player's own (the room stays connected).
 	void ToggleRoom();
 	bool ShowingRoom() const { return showRoom; }

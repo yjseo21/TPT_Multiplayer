@@ -13,6 +13,9 @@ namespace multiplayer { class GameSession {}; }
 #include "GameModel.h"
 #include "GameModelException.h"
 #include "GameView.h"
+#include "graphics/Graphics.h"
+#include "graphics/VideoBuffer.h"
+#include "JoinRoomView.h"
 #include "Menu.h"
 #include "Notification.h"
 #include "QuickOptions.h"
@@ -122,6 +125,11 @@ GameController::GameController():
 
 GameController::~GameController()
 {
+	if (ui::Engine::Ref().backgroundOwner == gameView)
+	{
+		ui::Engine::Ref().backgroundTick = nullptr;
+		ui::Engine::Ref().backgroundOwner = nullptr;
+	}
 	if(search)
 	{
 		delete search;
@@ -643,6 +651,11 @@ bool GameController::KeyPress(int key, int scan, bool repeat, bool shift, bool c
 	if (ret && key == SDLK_m && ctrl && shift && !alt)
 	{
 		ToggleRoom(); // between a joined room and the player's own canvas
+		return false;
+	}
+	if (ret && key == SDLK_j && ctrl && shift && !alt)
+	{
+		OpenRoomDialog();
 		return false;
 	}
 	if (ret)
@@ -1904,7 +1917,9 @@ void GameController::CreateDebugInfo()
 // entry points the mouse and keyboard use, and logs room status once a second
 // to TPT_MP_AUTOMATION_LOG. Steps: {"at": seconds, "do": ...}, where "do" is
 // tool (identifier), brush (id, rx, ry), points (x1,y1,x2,y2,held), line, rect,
-// fill, toggle, pause (paused), step, clear, local (a refused action), or quit.
+// fill, toggle, pause (paused), step, clear, local (a refused action), leave,
+// dialog, dialogjoin / dialogcancel (Enter / Escape on it), mark (name: logs a
+// row now), capture (path: saves the window as a PNG), or quit.
 struct GameController::RoomAutomation
 {
 	std::vector<Json::Value> steps;
@@ -1971,19 +1986,36 @@ bool GameController::RoomTool(int toolSelection, const char *action, ui::Point a
 #endif
 }
 
-void GameController::JoinRoom(ByteString url, ByteString name)
+void GameController::JoinRoom(ByteString url, ByteString name, std::optional<ByteString> roomToken, std::optional<ByteString> adminToken)
 {
 #ifdef TPT_GAME_MULTIPLAYER
-	auto env = [](const char *key) { auto *value = std::getenv(key); return std::string(value ? value : ""); };
+	auto env = [](const char *key) { auto *value = std::getenv(key); return ByteString(value ? value : ""); };
+	auto trim = [](ByteString text) {
+		auto begin = text.find_first_not_of(" 	"), end = text.find_last_not_of(" 	");
+		return begin == ByteString::npos ? ByteString() : text.substr(begin, end - begin + 1);
+	};
+	url = trim(url);
+	if (!url.size())
+	{
+		gameModel->Log("Enter a room address, like wss://host:port.", false);
+		return;
+	}
+	if (!url.Contains("://"))
+		url = "wss://" + url;
 	bool local = url.BeginsWith("ws://127.0.0.1") || url.BeginsWith("ws://localhost") || url.BeginsWith("ws://[::1]");
 	if (!url.BeginsWith("wss://") && !local)
 	{
 		gameModel->Log("Rooms on other computers need a wss:// address.", false);
 		return;
 	}
+	if (room)
+		EndRoom("Left the room.");
 	multiplayer::SessionOptions options;
+	name = trim(name);
 	options.url = url; options.name = name.size() ? std::string(name.substr(0, 32)) : "Player";
-	options.roomToken = env("TPT_ROOM_TOKEN"); options.adminToken = env("TPT_ADMIN_TOKEN");
+	lastRoomToken = roomToken ? *roomToken : env("TPT_ROOM_TOKEN");
+	lastAdminToken = adminToken ? *adminToken : env("TPT_ADMIN_TOKEN");
+	options.roomToken = lastRoomToken; options.adminToken = lastAdminToken;
 	try
 	{
 		room = std::make_unique<multiplayer::GameSession>(options);
@@ -1993,12 +2025,17 @@ void GameController::JoinRoom(ByteString url, ByteString name)
 		gameModel->Log(ByteString("Could not join the room: ") .FromUtf8() + ByteString(e.what()).FromUtf8(), false);
 		return;
 	}
+	GlobalPrefs::Ref().Set("Multiplayer.Room", url);
+	GlobalPrefs::Ref().Set("Multiplayer.Name", ByteString(options.name));
 	showRoom = true;
 	gameModel->ShowSimulation(room->Shown(), room->Paused());
 	CreateDebugInfo();
+	// The room keeps running while a dialog is open over the game.
+	ui::Engine::Ref().backgroundOwner = gameView;
+	ui::Engine::Ref().backgroundTick = [this] { UpdateRoom(); };
 	gameModel->Log("Joining room " + url.FromUtf8() + ". Ctrl+Shift+M switches between the room and your own canvas.", false);
 	auto script = env("TPT_MP_AUTOMATION");
-	if (!script.empty())
+	if (script.size() && !roomAutomation)
 	{
 		roomAutomation = std::make_unique<RoomAutomation>();
 		std::ifstream input(script);
@@ -2008,9 +2045,51 @@ void GameController::JoinRoom(ByteString url, ByteString name)
 				roomAutomation->steps.push_back(multiplayer::ParseJson(line));
 		roomAutomation->began = Platform::GetTime() / 1000.0;
 		auto logPath = env("TPT_MP_AUTOMATION_LOG");
-		if (!logPath.empty())
+		if (logPath.size())
 			roomAutomation->log.open(logPath);
 	}
+#else
+	gameModel->Log("This build has no multiplayer.", false);
+#endif
+}
+
+void GameController::EndRoom(String why)
+{
+#ifdef TPT_GAME_MULTIPLAYER
+	room.reset();
+	if (showRoom)
+	{
+		showRoom = false;
+		gameModel->ShowSimulation(nullptr, std::nullopt);
+		CreateDebugInfo();
+	}
+	gameView->SetRoomStatus("");
+	gameView->SetRoomOverlay({});
+	gameModel->Log(why, false);
+#endif
+}
+
+void GameController::LeaveRoom()
+{
+	if (room)
+		EndRoom("Left the room. Your own canvas is shown.");
+}
+
+void GameController::OpenRoomDialog()
+{
+#ifdef TPT_GAME_MULTIPLAYER
+	auto &prefs = GlobalPrefs::Ref();
+	JoinRoomView::Request initial{ prefs.Get("Multiplayer.Room", ByteString("")), prefs.Get("Multiplayer.Name", ByteString("")),
+	                               lastRoomToken, lastAdminToken };
+	if (!initial.name.size())
+		if (auto user = Client::Ref().GetAuthUser())
+			initial.name = user->Username;
+	String current = room ? ByteString(room->Options().url).FromUtf8() : String();
+	new JoinRoomView(initial, current, [this](JoinRoomView::Request request) {
+		JoinRoom(request.url, request.name, request.roomToken, request.adminToken);
+	}, [this] {
+		LeaveRoom();
+	});
 #else
 	gameModel->Log("This build has no multiplayer.", false);
 #endif
@@ -2020,13 +2099,15 @@ void GameController::ToggleRoom()
 {
 	if (!room)
 	{
-		gameModel->Log("You are not in a room. Start the game with join:ws://host:port to join one.", false);
+		OpenRoomDialog();
 		return;
 	}
 #ifdef TPT_GAME_MULTIPLAYER
 	showRoom = !showRoom;
 	gameModel->ShowSimulation(showRoom ? room->Shown() : nullptr, room->Paused());
 	CreateDebugInfo();
+	if (!showRoom)
+		gameView->SetRoomOverlay({});
 	gameModel->Log(showRoom ? String("Showing the room.") : String("Showing your own canvas; the room stays connected."), false);
 #endif
 }
@@ -2035,7 +2116,10 @@ void GameController::UpdateRoom()
 {
 #ifdef TPT_GAME_MULTIPLAYER
 	if (!room)
+	{
+		RunRoomAutomation(); // a script may join again
 		return;
+	}
 	bool changed;
 	try
 	{
@@ -2043,17 +2127,10 @@ void GameController::UpdateRoom()
 	}
 	catch (const std::exception &e)
 	{
-		gameModel->Log(ByteString("Room connection ended: ").FromUtf8() + ByteString(e.what()).FromUtf8(), false);
-		room.reset();
-		if (showRoom)
-		{
-			showRoom = false;
-			gameModel->ShowSimulation(nullptr, std::nullopt);
-			CreateDebugInfo();
-		}
-		gameView->SetRoomStatus("");
+		EndRoom(ByteString("Room connection ended: ").FromUtf8() + ByteString(e.what()).FromUtf8());
 		return;
 	}
+	StringBuilder status;
 	if (showRoom)
 	{
 		gameModel->ShowSimulation(room->Shown(), room->Paused());
@@ -2061,11 +2138,62 @@ void GameController::UpdateRoom()
 			CreateDebugInfo();
 		auto mouse = PointTranslate(gameView->GetMousePosition());
 		bool inside = mouse.X >= 0 && mouse.X < XRES && mouse.Y >= 0 && mouse.Y < YRES;
-		room->Cursor(inside, mouse.X, mouse.Y, gameModel->GetBrush().GetRadius().X, false);
+		room->Cursor(inside, mouse.X, mouse.Y, gameModel->GetBrush().GetRadius().X, gameView->IsMouseDown());
+		UpdateRoomOverlay();
+		status << ByteString(room->Status()).FromUtf8() << " | Ctrl+Shift+M: your canvas";
 	}
-	gameView->SetRoomStatus(ByteString(showRoom ? room->Status() + " | Ctrl+Shift+M: your canvas"
-	                                            : std::string("Your canvas | Ctrl+Shift+M: back to the room")).FromUtf8());
+	else
+		status << "Your canvas | Ctrl+Shift+M: back to the room";
+	auto &players = room->Players();
+	if (players.size())
+	{
+		status << "\nPlayers:";
+		for (Json::ArrayIndex i = 0; i < players.size(); ++i)
+		{
+			auto &p = players[i];
+			bool own = p["player"].asUInt() == room->OwnPlayer(), admin = p["admin"].asBool();
+			status << (i ? String(", ") : String(" ")) << ByteString(p["name"].asString()).FromUtf8();
+			if (own && admin)
+				status << " (you, admin)";
+			else if (own || admin)
+				status << (own ? String(" (you)") : String(" (admin)"));
+		}
+	}
+	gameView->SetRoomStatus(status.Build());
 	RunRoomAutomation();
+#endif
+}
+
+void GameController::UpdateRoomOverlay()
+{
+#ifdef TPT_GAME_MULTIPLAYER
+	RoomOverlay overlay;
+	for (auto &p : room->Players())
+		if (p["player"].asUInt() != room->OwnPlayer() && p["visible"].asBool())
+			overlay.cursors.push_back({ { p["x"].asInt(), p["y"].asInt() }, p["radius"].asInt(), p["drawing"].asBool(),
+			                            p["player"].asUInt(), ByteString(p["name"].asString()).FromUtf8() });
+	// The player's own edits show at once, before the room applies them.
+	if (room->Synchronized())
+		room->ForEachPending([this, &overlay](const Json::Value &c) {
+			auto action = c["action"].asString();
+			bool box = action == "box";
+			if (!box && action != "point" && action != "line")
+				return; // a fill's extent is only known once applied
+			auto identifier = ByteString(c["tool"].asString());
+			if (identifier.BeginsWith("DEFAULT_TOOL_"))
+				return; // heat, air and the like change nothing visible at once
+			auto *tool = gameModel->GetToolFromIdentifier(identifier);
+			if (!tool)
+				return;
+			auto brush = c["brush"].asString();
+			auto shape = brush == "rectangle" ? RoomOverlay::Ghost::Rectangle : brush == "triangle" ? RoomOverlay::Ghost::Triangle :
+				brush == "ellipse-perfect" ? RoomOverlay::Ghost::PerfectEllipse : RoomOverlay::Ghost::Ellipse;
+			overlay.ghosts.push_back({ { c["x1"].asInt(), c["y1"].asInt() }, { c["x2"].asInt(), c["y2"].asInt() },
+			                           { c["radius"].asInt(), c["radiusY"].asInt() }, shape, box,
+			                           identifier.BeginsWith("DEFAULT_WL_"), tool->Colour });
+		});
+	roomGhostsPeak = std::max(roomGhostsPeak, overlay.ghosts.size());
+	gameView->SetRoomOverlay(std::move(overlay));
 #endif
 }
 
@@ -2073,21 +2201,31 @@ void GameController::RunRoomAutomation()
 {
 #ifdef TPT_GAME_MULTIPLAYER
 	auto *automation = roomAutomation.get();
-	if (!automation || !room)
+	if (!automation)
 		return;
 	auto now = Platform::GetTime() / 1000.0 - automation->began;
-	if (automation->log.is_open() && now >= automation->nextLog)
-	{
-		auto sample = room->Sample();
+	auto sampleRoom = [&] {
+		auto sample = room ? room->Sample() : Json::Value(Json::objectValue);
+		sample["inRoom"] = bool(room);
 		sample["elapsedSeconds"] = now;
 		sample["showingRoom"] = showRoom;
-		sample["shownIsRoomWorld"] = showRoom && room->Synchronized() && gameModel->GetSimulation() == room->Shown();
+		sample["shownIsRoomWorld"] = showRoom && room && room->Synchronized() && gameModel->GetSimulation() == room->Shown();
 		sample["shownParts"] = gameModel->GetSimulation()->NUM_PARTS;
 		sample["ownParts"] = gameModel->GetLocalSimulation()->NUM_PARTS;
 		sample["lastNotice"] = lastRoomNotice.ToUtf8();
+		sample["roomStatus"] = gameView->GetRoomStatus().ToUtf8();
+		sample["dialogOpen"] = ui::Engine::Ref().GetWindow() != gameView;
+		sample["previewPeak"] = Json::UInt64(roomGhostsPeak);
+		roomGhostsPeak = 0;
+		return sample;
+	};
+	if (automation->log.is_open() && now >= automation->nextLog)
+	{
+		auto sample = sampleRoom();
 		sample["editLatencyMs"] = Json::Value(Json::arrayValue);
-		for (auto ms : room->TakeEditLatencies())
-			sample["editLatencyMs"].append(ms);
+		if (room)
+			for (auto ms : room->TakeEditLatencies())
+				sample["editLatencyMs"].append(ms);
 		automation->log << multiplayer::JsonText(sample) << std::endl;
 		automation->nextLog = now + 1;
 	}
@@ -2111,15 +2249,38 @@ void GameController::RunRoomAutomation()
 		else if (act == "step") FrameStep();
 		else if (act == "clear") ClearSim();
 		else if (act == "local") ResetAir();
+		else if (act == "leave") LeaveRoom();
+		else if (act == "dialog") OpenRoomDialog();
+		else if (act == "dialogjoin")
+		{
+			// Presses Enter on the open dialog: Join, as the player would.
+			if (auto *dialog = JoinRoomView::open; dialog && ui::Engine::Ref().GetWindow() == dialog)
+				dialog->DoKeyPress(SDLK_RETURN, SDL_SCANCODE_RETURN, false, false, false, false);
+		}
+		else if (act == "dialogcancel")
+		{
+			if (auto *dialog = JoinRoomView::open; dialog && ui::Engine::Ref().GetWindow() == dialog)
+				dialog->DoKeyPress(SDLK_ESCAPE, SDL_SCANCODE_ESCAPE, false, false, false, false);
+		}
+		else if (act == "capture")
+		{
+			// The whole window as last drawn, dialogs included, for visual checks.
+			auto *g = ui::Engine::Ref().g;
+			if (auto png = VideoBuffer(g->Data(), g->Size()).ToPNG())
+				Platform::WriteFile(*png, ByteString(step["path"].asString()));
+		}
+		else if (act == "mark" && automation->log.is_open())
+		{
+			auto sample = sampleRoom();
+			sample["mark"] = step["name"];
+			automation->log << multiplayer::JsonText(sample) << std::endl;
+		}
 		else if (act == "quit")
 		{
 			if (automation->log.is_open())
 			{
-				auto sample = room->Sample();
+				auto sample = sampleRoom();
 				sample["final"] = true;
-				sample["showingRoom"] = showRoom;
-				sample["lastNotice"] = lastRoomNotice.ToUtf8();
-				sample["ownParts"] = gameModel->GetLocalSimulation()->NUM_PARTS;
 				automation->log << multiplayer::JsonText(sample) << std::endl;
 			}
 			ui::Engine::Ref().Exit();

@@ -16,6 +16,7 @@ public:
     void Acknowledge(uint64_t id) { pending.erase(id); }
     void Disconnect() { uncertain += pending.size(); pending.clear(); next = 0; }
     std::size_t Pending() const { return pending.size(); }
+    uint64_t Last() const { return next; } // the latest Begin(), 0 on a new connection
     uint64_t Uncertain() const { return uncertain; }
 };
 }
