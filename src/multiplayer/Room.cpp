@@ -106,12 +106,7 @@ void Room::PasteChunk(const std::shared_ptr<Peer> &p, const Json::Value &v)
     if (p->pasteSave.size() + v["data"].asString().size() > (MaxPasteBytes+2)/3*4)
         throw std::runtime_error("pasted save too large for a room");
     // Uploads share the player's editing budget (one operation per chunk).
-    auto now = Clock::now();
-    double elapsed = std::chrono::duration<double>(now - p->refill).count(); p->refill = now;
-    p->operations = std::min(120.0, p->operations + elapsed * 120);
-    p->work = std::min(EditWorkPerSecond, p->work + elapsed * EditWorkPerSecond);
-    if (p->operations < 1) throw std::runtime_error("editing rate exceeded");
-    p->operations -= 1;
+    Charge(*p, 0);
     p->pasteSave += v["data"].asString();
 }
 namespace
@@ -270,6 +265,15 @@ void Room::DesyncReport(const std::shared_ptr<Peer> &p, const Json::Value &v)
                                        : std::string("tick no longer retained")) << std::endl;
     p->Text(std::move(detail)); return;
 }
+void Room::Charge(Peer &p, unsigned cost)
+{
+    auto now = Clock::now();
+    double elapsed = std::chrono::duration<double>(now - p.refill).count(); p.refill = now;
+    p.operations = std::min(120.0, p.operations + elapsed * 120);
+    p.work = std::min(EditWorkPerSecond, p.work + elapsed * EditWorkPerSecond);
+    if (p.operations < 1 || p.work < cost) throw std::runtime_error("editing rate exceeded");
+    p.operations -= 1; p.work -= cost;
+}
 void Room::QueueRequest(const std::shared_ptr<Peer> &p, const Json::Value &v, uint64_t &seq)
 {
     seq = Sequence(v);
@@ -278,6 +282,7 @@ void Room::QueueRequest(const std::shared_ptr<Peer> &p, const Json::Value &v, ui
     p->lastSequence = seq;
     Request request; request.peer = p; request.command.sequence = seq;
     unsigned cost = 1;
+    bool charged = false;
     if (v["op"] == "admin")
     {
         if (!p->admin) throw std::runtime_error("administrator permission required");
@@ -307,20 +312,21 @@ void Room::QueueRequest(const std::shared_ptr<Peer> &p, const Json::Value &v, ui
             withSave.removeMember("upload");
             p->pasteSave.clear(); p->pasteId = 0;
             request.command = ParseCommand(withSave, p->admin);
+            // Charged before the save is unpacked: parsing is the expensive part,
+            // so a refused or broken save still uses up the player's budget.
+            Charge(*p, request.command.Cost()); charged = true;
             CheckPastedSave(request.command);
         }
-        else request.command = ParseCommand(v, p->admin);
-        // A player only ever steers their own stickman.
-        if (request.command.kind == Command::Stickman || request.command.kind == Command::StickmanSpawn)
-            request.command.slot = p->stickmanSlot;
-        cost = request.command.Cost();
+        else
+        {
+            request.command = ParseCommand(v, p->admin);
+            // A player only ever steers their own stickman.
+            if (request.command.kind == Command::Stickman || request.command.kind == Command::StickmanSpawn)
+                request.command.slot = p->stickmanSlot;
+            cost = request.command.Cost();
+        }
     }
-    auto now = Clock::now();
-    double elapsed = std::chrono::duration<double>(now - p->refill).count(); p->refill = now;
-    p->operations = std::min(120.0, p->operations + elapsed * 120);
-    p->work = std::min(EditWorkPerSecond, p->work + elapsed * EditWorkPerSecond);
-    if (p->operations < 1 || p->work < cost) throw std::runtime_error("editing rate exceeded");
-    p->operations -= 1; p->work -= cost;
+    if (!charged) Charge(*p, cost);
     std::lock_guard lock(queueMutex);
     if (queue.size() >= 256 || p->pending >= 64) throw std::runtime_error("command queue full");
     ++p->pending; queue.push_back(std::move(request));
@@ -526,9 +532,12 @@ void Room::SealTick(const std::vector<std::shared_ptr<Peer>> &active)
         Json::Value seal;
         seal["type"] = "tick_seal";
         seal["tick"] = Json::UInt64(world.tick);
-        seal["revision"] = Json::UInt64(world.revision);
-        seal["resetGeneration"] = Json::UInt64(world.resetGeneration);
-        seal["paused"] = world.paused;
+        // Compact seals: metadata goes only when it changed (every replica got it
+        // in full with its checkpoint). Pause stays explicit while paused, since
+        // it releases batched seals at once.
+        if (world.revision != lastSealedRevision) seal["revision"] = Json::UInt64(world.revision);
+        if (world.resetGeneration != lastSealedReset) seal["resetGeneration"] = Json::UInt64(world.resetGeneration);
+        if (world.paused || world.paused != lastSealedPaused) seal["paused"] = world.paused;
         if (world.tick % 60 == 0 || (world.paused && world.revision != lastSealedRevision))
         {
             auto fields = DiagnosticDigests(world); RememberDigest(world.tick, world.revision, fields);
@@ -537,6 +546,7 @@ void Room::SealTick(const std::vector<std::shared_ptr<Peer>> &active)
         for (auto &p : active) if (p->authenticated && !p->closed && p->replica && !p->needsReplicaBootstrap)
             p->Text(seal);
         lastSealedTick = world.tick; lastSealedRevision = world.revision;
+        lastSealedReset = world.resetGeneration; lastSealedPaused = world.paused;
     }
 }
 void Room::Measure()

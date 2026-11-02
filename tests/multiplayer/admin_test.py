@@ -1,8 +1,10 @@
 """Authoritative room lock and kick moderation, including the native CLI."""
+import base64
 import json
 import os
 from pathlib import Path
 import runpy
+import struct
 import subprocess
 import sys
 import tempfile
@@ -48,6 +50,17 @@ with tempfile.TemporaryDirectory(prefix="tpt-admin-") as tmp:
         guest.send(fixture["brush"](3))
         guest.control("ack", 3)
         edited = admin.frame(revision=initial_revision + 1)["revision"]
+
+        # Pastes are charged before their save is unpacked, so a stream of broken
+        # saves runs into the editing budget instead of costing the server a parse each.
+        broken = base64.b64encode(b"OPS1" + bytes(4) + struct.pack("<I", 1000) + b"not bzip2 data").decode()
+        reasons = []
+        for upload in range(1, 9):
+            guest.send(dict(type="paste_chunk", id=upload, data=broken))
+            guest.send(dict(seq=3 + upload, op="paste", upload=upload, x1=0, y1=0))
+            reasons.append(guest.control("error", 3 + upload)["message"])
+        limited = sum("editing rate exceeded" in reason for reason in reasons)
+        assert 3 <= limited <= 6, reasons
 
         admin.send(dict(seq=1, op="admin", action="lock", locked=True))
         admin.control("ack", 1)
@@ -109,7 +122,7 @@ with tempfile.TemporaryDirectory(prefix="tpt-admin-") as tmp:
         assert "too many wrong passwords" in until(right, "close")
         right.close()
         print("PASS: admin permission, locks, admin bypass, removals, sequence rejection, unchanged physics, native CLI "
-              "and password guessing limits")
+              "paste budgets and password guessing limits")
     finally:
         for ws in clients:
             ws.close()

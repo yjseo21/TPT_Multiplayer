@@ -1,5 +1,6 @@
 #include "World.h"
 #include "ExactCheckpoint.h"
+#include "StateDigest.h"
 #include "simulation/gravity/Gravity.h"
 #include "Canvas.h"
 #include "simulation/SimulationData.h"
@@ -101,5 +102,15 @@ int main()
         }
         std::cout << "  snapshot: capture_ms=" << captureMs/captures << " compress_ms=" << compressMs/captures
             << " raw_bytes=" << rawBytes << " packet_bytes=" << packetBytes << std::endl;
+        // The fingerprint every 60 ticks, on the server and on every player's computer.
+        double digestMs = 0;
+        for (int i = 0; i < 5; ++i)
+        {
+            auto start = std::chrono::steady_clock::now();
+            auto summary = DigestSummary(DiagnosticDigests(world));
+            digestMs += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now()-start).count();
+            if (summary.empty()) throw std::runtime_error("empty digest");
+        }
+        std::cout << "  fingerprint: digest_ms=" << digestMs/5 << std::endl;
     }
 }

@@ -150,8 +150,9 @@ struct Peer
         {
             // Hold empty-interval seals briefly: the latest one lets the client run
             // every intermediate tick. Digests and pause transitions go out at once.
-            bool urgent = !value["digest"].isNull() || value["paused"].asBool();
+            bool urgent = value.isMember("digest") || value.get("paused", false).asBool();
             if (pendingSeal.isNull()) pendingSealSince = MonotonicSeconds();
+            else CarrySealFields(pendingSeal, value);
             pendingSeal = std::move(value);
             if (urgent) FlushSealLocked();
             return;
@@ -159,6 +160,13 @@ struct Peer
         // Never coalesce across a command_commit boundary.
         FlushSealLocked();
         PushLocked(std::move(value));
+    }
+    // A later compact seal replacing an earlier one keeps the earlier one's
+    // metadata, so the replica still checks every change.
+    static void CarrySealFields(const Json::Value &from, Json::Value &to)
+    {
+        for (auto key : {"revision", "resetGeneration", "paused"})
+            if (from.isMember(key) && !to.isMember(key)) to[key] = from[key];
     }
     // Requires mutex. Queues the held seal (if any) ahead of later messages.
     void FlushSealLocked()
@@ -171,8 +179,9 @@ struct Peer
         // Coalesce empty edit intervals when the sender is behind, but keep any
         // queued seal that carries a fingerprint so it is still verified.
         if (replica && value["type"] == "tick_seal" && !controls.empty() &&
-            controls.back()["type"] == "tick_seal" && controls.back()["digest"].isNull())
+            controls.back()["type"] == "tick_seal" && !controls.back().isMember("digest"))
         {
+            CarrySealFields(controls.back(), value);
             controls.back() = std::move(value); changed.notify_one(); return;
         }
         auto bytes = ApproximateBytes(value);

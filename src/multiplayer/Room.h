@@ -87,12 +87,16 @@ private:
     std::string reportedSaveError;
     double nextPresence = 0;
     uint64_t lastSealedTick = UINT64_MAX, lastSealedRevision = UINT64_MAX;
+    uint64_t lastSealedReset = UINT64_MAX;
+    bool lastSealedPaused = false;
 
     void OnMessage(const std::shared_ptr<Peer> &p, const ix::WebSocketMessage &msg);
     void Hello(const std::shared_ptr<Peer> &p, const Json::Value &v);
     void Cursor(const std::shared_ptr<Peer> &p, const Json::Value &v);
     void Probe(const std::shared_ptr<Peer> &p, const Json::Value &v);
     void DesyncReport(const std::shared_ptr<Peer> &p, const Json::Value &v);
+    // Takes one operation and `cost` work from the player's editing budget, or throws.
+    void Charge(Peer &p, unsigned cost);
     void QueueRequest(const std::shared_ptr<Peer> &p, const Json::Value &v, uint64_t &seq);
     void RememberDigest(uint64_t tick, uint64_t revision, const Json::Value &fields);
 

@@ -62,7 +62,11 @@ void ReplicaState::OnJson(const Json::Value &v)
         if (type == "tick_seal")
         {
             uint64_t tick=Required64(v,"tick");
-            if (!v["paused"].isBool() || tick < sealedTick || tick-sealedTick > 10000)
+            // Compact seals omit metadata that did not change; present fields must be valid.
+            if ((v.isMember("paused") && !v["paused"].isBool()) ||
+                (v.isMember("revision") && !v["revision"].isUInt64()) ||
+                (v.isMember("resetGeneration") && !v["resetGeneration"].isUInt64()) ||
+                tick < sealedTick || tick-sealedTick > 10000)
                 throw std::runtime_error("invalid or unbounded replica tick seal");
             sealedTick = tick;
         }
@@ -90,22 +94,24 @@ void ReplicaState::Commit(const Json::Value &v)
 }
 void ReplicaState::Seal(const Json::Value &v)
 {
-    uint64_t tick=Required64(v,"tick"), rev=Required64(v,"revision");
+    uint64_t tick=Required64(v,"tick");
     if (tick < world.tick) throw std::runtime_error("invalid or unbounded replica tick seal");
     while (world.tick < tick)
     {
         if (world.paused) throw std::runtime_error("server advanced while replica paused");
         world.Advance();
     }
-    if (world.tick != tick || world.revision != rev ||
-        world.paused != v["paused"].asBool() ||
-        world.resetGeneration != Required64(v,"resetGeneration"))
+    // Omitted fields are unchanged on the server; commits already checked them here.
+    if (world.tick != tick ||
+        (v.isMember("revision") && world.revision != v["revision"].asUInt64()) ||
+        (v.isMember("paused") && world.paused != v["paused"].asBool()) ||
+        (v.isMember("resetGeneration") && world.resetGeneration != v["resetGeneration"].asUInt64()))
         throw std::runtime_error("replica metadata diverged at tick seal");
     if (!v["digest"].isNull())
     {
         if (!v["digest"].isString()) throw std::runtime_error("invalid replica digest");
         auto fields = DiagnosticDigests(world);
-        if (v["digest"].asString() != DigestSummary(fields)) throw ReplicaDesync(tick, rev, std::move(fields));
+        if (v["digest"].asString() != DigestSummary(fields)) throw ReplicaDesync(tick, world.revision, std::move(fields));
         ++checks;
     }
     ++seals;

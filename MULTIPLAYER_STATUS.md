@@ -25,6 +25,10 @@ Engineering notes: `docs/multiplayer/`.
   pasting stamps.
 - **Lag isolation:** joins cost the room a few milliseconds, and a computer that
   can't keep up shows TOO SLOW and jumps ahead.
+- **Light on the network and smooth:**
+  - an idle room costs a player about 25 kbps, whatever the particle count;
+  - the once-a-second sync check takes 1–3 ms;
+  - Newtonian gravity takes about 1.5 ms a tick.
 - **Security:** limits on password guessing, constant-time password checks,
   per-player edit budgets, and size limits on every message.
 - **Rooms without a certificate:** `host:port` joins a plain room, like a

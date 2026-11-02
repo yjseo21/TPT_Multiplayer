@@ -21,12 +21,15 @@ bool GameSession::Enqueue(std::vector<Json::Value> commands, std::string &why)
 {
     std::vector<Outgoing> parsed;
     double work = 0;
+    bool paste = false;
     for (auto &command : commands)
     {
-        // Paste uploads: chunks are messages of their own, then the paste itself.
+        // Paste uploads: chunks are messages of their own, then the paste itself,
+        // charged as the server charges it.
         if (command.isMember("type") || command["op"] == "paste")
         {
-            double cost = command.isMember("type") ? 0 : XRES*YRES;
+            paste = true;
+            double cost = command.isMember("type") ? 0 : ToolCommandCostLimit;
             parsed.push_back({std::move(command), cost});
             work += cost;
             continue;
@@ -38,6 +41,13 @@ bool GameSession::Enqueue(std::vector<Json::Value> commands, std::string &why)
         command.removeMember("seq");
         parsed.push_back({std::move(command), cost});
         work += cost;
+    }
+    // A paste goes whole or not at all: its chunks alone would leave the server
+    // holding an upload that never gets used.
+    if (paste && queuedWork+work > 2*WorkRate)
+    {
+        why = "The room is still busy with your earlier edits; try pasting again in a moment.";
+        return false;
     }
     // At most about two seconds of the room's editing budget may wait here; the
     // rest of an enormous stroke is skipped, as a lagging single-player game would.

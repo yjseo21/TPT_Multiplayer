@@ -2516,6 +2516,7 @@ void GameController::RunRoomAutomation()
 		else if (act == "sign" || act == "signbutton")
 		{
 			// What the sign window hands over on OK (new sign); a click on a button sign.
+			UpdateRoomSigns(); // steps can run in the same frame as switching to the room
 			auto *tool = static_cast<SignTool *>(gameModel->GetToolFromIdentifier("DEFAULT_UI_SIGN"));
 			if (act == "sign" && tool->roomChange)
 				tool->roomChange(-1, std::nullopt, sign(ByteString(step["text"].asString()).FromUtf8(), a.X, a.Y, sign::Middle));

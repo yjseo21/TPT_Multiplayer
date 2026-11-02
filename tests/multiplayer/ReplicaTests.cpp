@@ -69,7 +69,17 @@ int main(int argc, char **argv)
  Need(EncodeExactCheckpoint(paced.world)==EncodeExactCheckpoint(replica.world),"paced and immediate replicas differ");
  auto behind=seal;behind["tick"]=Json::UInt64(steps-1);
  Reject([&]{paced.OnJson(behind);});
- std::cout<<"replica: exact bootstrap + ordered edit + " << steps << " simulated ticks + divergence detection + paced stepping PASS\n";
+ // Compact seals: unchanged metadata is omitted; present metadata is still checked.
+ authoritative.Advance();
+ Json::Value compact;compact["type"]="tick_seal";compact["tick"]=Json::UInt64(authoritative.tick);
+ replica.OnJson(compact);
+ Need(replica.world.tick==authoritative.tick,"replica did not run to a compact seal");
+ authoritative.Advance();
+ auto wrongRevision=compact;wrongRevision["tick"]=Json::UInt64(authoritative.tick);wrongRevision["revision"]=Json::UInt64(authoritative.revision+1);
+ Reject([&]{replica.OnJson(wrongRevision);});
+ auto badPaused=compact;badPaused["tick"]=Json::UInt64(authoritative.tick);badPaused["paused"]="no";
+ Reject([&]{replica.OnJson(badPaused);});
+ std::cout<<"replica: exact bootstrap + ordered edit + " << steps << " simulated ticks + compact seals + divergence detection + paced stepping PASS\n";
  return 0;
  }catch(const std::exception &e){std::cerr<<"replica test FAILED: "<<e.what()<<'\n';return 1;}
 }

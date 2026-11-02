@@ -53,8 +53,10 @@ these properties:
     is reproduced.
   - CI then confirmed the same digest on GCC, MSVC and Apple clang, on x86-64
     and ARM64. A solve takes about 4.8 ms.
-- **Cost:** about 3.6–3.9 ms per tick while the mass changes, on the
-  development machine. Ticks where the mass is unchanged cost nothing.
+- **Cost:** about 1.4–1.6 ms per tick while the mass changes, on the
+  development machine (3.6–3.9 ms before the column pass ran across whole
+  rows; see `PERFORMANCE_2026-11-02.md`). Ticks where the mass is unchanged
+  cost nothing.
 
 `Simulation::deterministicGravity` (set by every multiplayer `World`) makes
 `EnableNewtonianGravity` create this solver. `Gravity` gained a `deterministic`

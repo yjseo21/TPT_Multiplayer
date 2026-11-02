@@ -26,6 +26,7 @@
 #include "SimulationConfig.h"
 #include <cmath>
 #include <cstring>
+#include <algorithm>
 #include <utility>
 #include <memory>
 #include <vector>
@@ -135,7 +136,7 @@ void Transform(Complex *a, int n, const std::vector<Complex> &twiddles, bool inv
 class Solver
 {
 	std::vector<Complex> rowTwiddles = Twiddles(Width), columnTwiddles = Twiddles(Height);
-	std::vector<Complex> kernel, grid, column;
+	std::vector<Complex> kernel, grid;
 	GravityInput last;
 	bool haveLast = false;
 
@@ -146,20 +147,45 @@ class Solver
 			Transform(&grid[y * Width], Width, rowTwiddles, false);
 		Columns(false);
 	}
+	// The same transform as Transform() down every column at once: whole rows
+	// are swapped and combined, so memory is read in order. Each element sees
+	// exactly the operations Transform() would apply, so the bits are the same.
 	void Columns(bool inverse)
 	{
-		for (int x = 0; x < Width; ++x)
+		for (int i = 1, j = 0; i < Height; ++i)
 		{
-			for (int y = 0; y < Height; ++y)
-				column[y] = grid[y * Width + x];
-			Transform(column.data(), Height, columnTwiddles, inverse);
-			for (int y = 0; y < Height; ++y)
-				grid[y * Width + x] = column[y];
+			int bit = Height >> 1;
+			for (; j & bit; bit >>= 1)
+				j ^= bit;
+			j ^= bit;
+			if (i < j)
+				std::swap_ranges(&grid[i * Width], &grid[(i + 1) * Width], &grid[j * Width]);
+		}
+		for (int length = 2; length <= Height; length <<= 1)
+		{
+			int half = length / 2, step = Height / length;
+			for (int i = 0; i < Height; i += length)
+			{
+				for (int j = 0; j < half; ++j)
+				{
+					auto w = columnTwiddles[j * step];
+					if (inverse)
+						w.im = -w.im;
+					auto *upper = &grid[(i + j) * Width], *lower = &grid[(i + j + half) * Width];
+					for (int x = 0; x < Width; ++x)
+					{
+						auto v = Multiply(lower[x], w);
+						auto u = upper[x];
+						upper[x] = { u.re + v.re, u.im + v.im };
+						lower[x] = { u.re - v.re, u.im - v.im };
+					}
+				}
+			}
 		}
 	}
 
 public:
-	Solver() : grid(Width * Height), column(Height)
+	Solver() : grid(Width * Height)
 	{
 		// The pull of a unit mass at displacement d (target minus source):
 		// -G d / |d|^3, as the game's kernel. Real part x, imaginary part y, so
