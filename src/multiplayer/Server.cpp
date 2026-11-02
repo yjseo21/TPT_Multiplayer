@@ -23,7 +23,7 @@ void Signal(int) { stopping = 1; }
 std::string Env(const char *name) { auto p = std::getenv(name); return p ? p : ""; }
 struct Options
 {
-    std::string bind = "127.0.0.1", cert, key, load, save, autosaveDirectory, journalPath, exactLoad, exactSave;
+    std::string bind, cert, key, load, save, autosaveDirectory, journalPath, exactLoad, exactSave;
     int port = 34403, ticks = 60, updates = 20, runFor = 0, bandwidthKbps = 8192;
     bool paused = false;
     int uploadKbps = 8192;
@@ -50,7 +50,9 @@ Options Arguments(int argc, char **argv)
         if (a == "--help")
         {
             std::cout << "tpt-server: a dedicated room for up to four TPT Multiplayer players.\n"
-                "tpt-server [--bind ADDRESS] [--port 34403] [--cert PEM --key PEM] (wss://, for players on other computers)\n"
+                "tpt-server [--bind ADDRESS] [--port 34403] [--cert PEM --key PEM] (wss://, encrypted)\n"
+                "  Other computers can join when TPT_ROOM_TOKEN (the room password) is set: the server then\n"
+                "  listens on all network interfaces (0.0.0.0) unless --bind says otherwise.\n"
                 "  [--load world.cps] [--save world.cps] [--paused]\n"
                 "  [--exact-load world.tptx] [--exact-save world.tptx] (exact room state, same build only)\n"
                 "  [--tick-rate 60] [--update-rate 20] [--run-for SECONDS]\n"
@@ -99,8 +101,12 @@ Options Arguments(int argc, char **argv)
     if (o.cert.empty() != o.key.empty()) throw std::runtime_error("provide both --cert and --key");
     if (o.recover && (o.autosaveDirectory.empty() || !o.load.empty()))
         throw std::runtime_error("--recover requires --autosave-dir and cannot be combined with --load");
-    if (o.bind != "127.0.0.1" && o.bind != "::1" && (o.cert.empty() || Env("TPT_ROOM_TOKEN").empty()))
-        throw std::runtime_error("non-loopback binding requires TLS certificate/key and TPT_ROOM_TOKEN");
+    // Like a game server: with a room password, other computers may join, over
+    // plain ws:// or, with a certificate, wss://. Without one, only this computer.
+    bool password = !Env("TPT_ROOM_TOKEN").empty();
+    if (o.bind.empty()) o.bind = password ? "0.0.0.0" : "127.0.0.1";
+    if (o.bind != "127.0.0.1" && o.bind != "::1" && !password)
+        throw std::runtime_error("other computers can join only a room with a password: set TPT_ROOM_TOKEN");
     return o;
 }
 }
@@ -176,6 +182,10 @@ int main(int argc, char **argv)
         server.start();
         std::cout << "Listening on " << (options.cert.empty() ? "ws://" : "wss://") << options.bind << ':' << options.port
             << " | " << BuildId << " | 4 players maximum" << std::endl;
+        if (options.bind == "127.0.0.1" || options.bind == "::1")
+            std::cout << "Only this computer can join; set TPT_ROOM_TOKEN (a room password) to let others in." << std::endl;
+        else if (options.cert.empty())
+            std::cout << "Plain ws:// room: traffic, including the room password, is not encrypted." << std::endl;
         auto began = Clock::now(), nextTick = began;
         auto tickPeriod = std::chrono::nanoseconds(1000000000 / options.ticks);
         while (!stopping && !room.Failed() && (!options.runFor || Clock::now() - began < std::chrono::seconds(options.runFor)))

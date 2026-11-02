@@ -102,7 +102,12 @@ name, or your public IP).
 `tpt-server.service` in the Linux zip. It runs the server as a throwaway
 user with no access to your files, and restarts it if it stops. Setup takes
 six commands; see `HOSTING_SECURITY.md`, which also explains what opening the
-port exposes and how that was tested.
+port exposes and how that was tested. To run rooms under your own account
+(`systemctl --user`, from `~/services/powdertoy/NAME`), use
+`tpt-server@.service`; the same document covers it.
+
+With a room password set, the server accepts players from other computers.
+Without one, only this computer can join.
 
 To try it quickly by hand:
 

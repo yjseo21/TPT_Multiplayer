@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import runpy
+import socket
 import struct
 import subprocess
 import sys
@@ -110,6 +111,29 @@ with tempfile.TemporaryDirectory(prefix="tpt-admin-") as tmp:
         last = json.loads((folder / "client.jsonl").read_text().splitlines()[-1])
         assert not last["roomLocked"] and last["pendingEdits"] == 0
 
+        # A room with a password is reachable from other computers: join through
+        # this machine's own network address, not loopback.
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            try:
+                probe.connect(("192.0.2.1", 9))  # no packet is sent; this only picks the outgoing interface
+                lan = probe.getsockname()[0]
+            except OSError:
+                lan = None
+        if lan and not lan.startswith("127."):
+            remote = fixture["WS"](port, host=lan); clients.append(remote)
+            remote.hello(name="FromNetwork")
+            remote.close(); clients.remove(remote)
+        else:
+            print("note: no non-loopback address; skipped the network-address join")
+        # Without a password the room stays on this computer, and refuses to listen elsewhere.
+        bare = dict(env); bare.pop("TPT_ROOM_TOKEN", None)
+        local = subprocess.run([fixture["SERVER"], "--port", str(fixture["port"]()), "--run-for", "1"], env=bare,
+                               cwd=folder, capture_output=True, text=True, timeout=20)
+        assert local.returncode == 0 and "Only this computer can join" in local.stdout, local.stdout + local.stderr
+        exposed = subprocess.run([fixture["SERVER"], "--port", str(fixture["port"]()), "--bind", "0.0.0.0", "--run-for", "1"],
+                                 env=bare, cwd=folder, capture_output=True, text=True, timeout=20)
+        assert exposed.returncode != 0 and "set TPT_ROOM_TOKEN" in exposed.stdout + exposed.stderr, exposed.stdout + exposed.stderr
+
         # Guessing the room password: after 5 wrong tries in a minute, even the right one waits.
         for attempt in range(6):
             guess = fixture["WS"](port)
@@ -122,7 +146,7 @@ with tempfile.TemporaryDirectory(prefix="tpt-admin-") as tmp:
         assert "too many wrong passwords" in until(right, "close")
         right.close()
         print("PASS: admin permission, locks, admin bypass, removals, sequence rejection, unchanged physics, native CLI "
-              "paste budgets and password guessing limits")
+              "paste budgets, network-address joins, local-only rooms without a password and password guessing limits")
     finally:
         for ws in clients:
             ws.close()

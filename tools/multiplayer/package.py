@@ -37,6 +37,7 @@ def main():
     }
     if sys.platform.startswith("linux"):
         files["tpt-server.service"] = repo / "packaging" / "multiplayer" / "tpt-server.service"
+        files["tpt-server@.service"] = repo / "packaging" / "multiplayer" / "tpt-server@.service"  # per-user rooms
     missing = [str(path) for path in files.values() if not path.is_file()]
     if missing:
         sys.exit("missing build outputs: " + ", ".join(missing))

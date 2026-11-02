@@ -30,8 +30,8 @@ SERVER, CLIENT = map(lambda p: str(Path(p).resolve()), sys.argv[1:3])
 
 
 class WS:
-    def __init__(self, port, ca=None):
-        s = socket.create_connection(("127.0.0.1", port), timeout=5)
+    def __init__(self, port, ca=None, host="127.0.0.1"):
+        s = socket.create_connection((host, port), timeout=5)
         if ca:
             s = ssl.create_default_context(cafile=str(ca)).wrap_socket(s, server_hostname="127.0.0.1")
         self.s, self.buffer = s, b""
@@ -39,7 +39,7 @@ class WS:
         self.send_lock = threading.Lock()
         self.canvas_bytes = 0
         key = base64.b64encode(os.urandom(16)).decode()
-        s.sendall((f"GET / HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nUpgrade: websocket\r\n"
+        s.sendall((f"GET / HTTP/1.1\r\nHost: {host}:{port}\r\nUpgrade: websocket\r\n"
                    f"Connection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n").encode())
         while b"\r\n\r\n" not in self.buffer:
             data = s.recv(4096)

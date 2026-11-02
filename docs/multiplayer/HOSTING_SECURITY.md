@@ -115,6 +115,53 @@ What the sandbox means:
 - **Sockets:** internet sockets only.
 - **Resources:** capped at 2 GB of memory, 128 threads and 2 CPU cores.
 
+## Running it as your own user instead (systemctl --user)
+
+`tpt-server@.service` runs rooms under your own account, without root, one
+room per folder in `~/services/powdertoy/`. For a room called `NAME`:
+
+```sh
+mkdir -p ~/services/powdertoy/NAME/data ~/.config/systemd/user
+install -m 755 tpt-server ~/services/powdertoy/NAME/tpt-server
+install -m 600 /dev/null ~/services/powdertoy/NAME/server.env
+nano ~/services/powdertoy/NAME/server.env
+install -m 644 tpt-server@.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now tpt-server@NAME
+sudo loginctl enable-linger "$USER"
+```
+
+In `server.env`, put three lines; each room needs its own port:
+
+```
+TPT_ROOM_TOKEN=your-room-password
+TPT_ADMIN_TOKEN=your-admin-key
+TPT_PORT=34403
+```
+
+`loginctl enable-linger` keeps your services running while you're logged out
+and starts them at boot. Useful commands:
+- `systemctl --user status tpt-server@NAME`: is it running?
+- `journalctl --user -u tpt-server@NAME`: its log.
+- `systemctl --user restart tpt-server@NAME`: after an update.
+
+The server runs as you, so the sandbox has to do what a separate user would.
+It replaces your home folder with an empty one that holds only this room's
+folder, read-only except `data/`. This was checked by running a probe
+under the same settings. From inside, the probe saw this:
+- **Your files:** none. No `.ssh`, `.bashrc` or anything else in your home;
+  only `services/powdertoy/NAME`.
+- **The passwords file:** unreadable (systemd reads it before starting the
+  server).
+- **The server binary:** read-only, so a compromised server can't replace it.
+- **The system:** read-only, with only basic devices in `/dev`.
+
+The other restrictions match the system service: no privileges, internet
+sockets only, the same system-call filter, and the same memory, task and CPU
+limits. The one difference is identity: the process keeps your user ID, inside
+a user namespace of its own. That's why the folder and file restrictions above
+matter, and why it should never run from a folder holding anything else.
+
 ## What remains
 
 No networked program can honestly be called impossible to break.
