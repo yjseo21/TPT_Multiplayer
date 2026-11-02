@@ -40,9 +40,9 @@ test('multiplayer-element-sweep', mp_element_sweep, timeout: 600)
 mp_determinism = executable('tpt-determinism', '../../tests/multiplayer/DeterminismProbe.cpp',
   dependencies: mp_core, cpp_args: project_cpp_args + mp_codec_args, link_args: mp_link_args,
   override_options: target_options)
-# Every platform must compute this exact fingerprint (first pinned on Linux GCC
+# Every platform must compute this exact fingerprint (the same on GCC, clang
 # and Windows UCRT): servers and players on different systems share one world.
-test('multiplayer-determinism', mp_determinism, args: ['--expect', 'a94c2cf146309896'], timeout: 300)
+test('multiplayer-determinism', mp_determinism, args: ['--verbose', '--expect', '955a824625c12c83'], timeout: 300)
 mp_checkpoint_tests = executable('tpt-checkpoint-tests', '../../tests/multiplayer/CheckpointTests.cpp',
   dependencies: mp_core, cpp_args: project_cpp_args + mp_codec_args, link_args: mp_link_args,
   override_options: target_options)

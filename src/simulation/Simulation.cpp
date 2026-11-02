@@ -75,7 +75,9 @@ void Simulation::Load(const GameSave *save, bool includePressure, Vec2<int> bloc
 			}
 		}
 	}
-	std::sort(existingParticles.begin(), existingParticles.end(), [](const auto &lhs, const auto &rhs) {
+	// Stable: particles stacked on one pixel keep their order, which std::sort
+	// leaves to each standard library (rooms span several).
+	std::stable_sort(existingParticles.begin(), existingParticles.end(), [](const auto &lhs, const auto &rhs) {
 		return std::tie(lhs.pos.Y, lhs.pos.X) < std::tie(rhs.pos.Y, rhs.pos.X);
 	});
 	PlaneAdapter<std::vector<size_t>> existingParticleIndices(pasteArea.size, existingParticles.size());
@@ -1980,9 +1982,14 @@ int Simulation::create_part(int p, int x, int y, int t, int v)
 		int colr, colg, colb;
 		int sandcolourToUse = p == -2 ? sandcolour_interface : sandcolour;
 		RGB colour = elements[t].Colour;
-		colr = colour.Red   + int(sandcolourToUse * 1.3) + rng.between(-20, 20) + rng.between(-15, 15);
-		colg = colour.Green + int(sandcolourToUse * 1.3) + rng.between(-20, 20) + rng.between(-15, 15);
-		colb = colour.Blue  + int(sandcolourToUse * 1.3) + rng.between(-20, 20) + rng.between(-15, 15);
+		// One draw per statement: operands of + are evaluated in no fixed order.
+		auto noise = [this] {
+			int coarse = rng.between(-20, 20);
+			return coarse + rng.between(-15, 15);
+		};
+		colr = colour.Red   + int(sandcolourToUse * 1.3) + noise();
+		colg = colour.Green + int(sandcolourToUse * 1.3) + noise();
+		colb = colour.Blue  + int(sandcolourToUse * 1.3) + noise();
 		colr = std::clamp(colr, 0, 255);
 		colg = std::clamp(colg, 0, 255);
 		colb = std::clamp(colb, 0, 255);

@@ -218,6 +218,19 @@ public:
 	//int InCurrentBrush(int i, int j, int rx, int ry);
 	//int get_brush_flags();
 	int create_part(int p, int x, int y, int t, int v = -1);
+	int create_part(int p, Vec2<int> pos, int t, int v = -1)
+	{
+		return create_part(p, pos.X, pos.Y, t, v);
+	}
+	// (x, y) moved by -1, 0 or 1 on each axis at random, x drawn first. Two draws
+	// in one function call's arguments happen in an order the compiler picks, so
+	// rooms between compilers would disagree; this keeps the order fixed.
+	Vec2<int> RandomNeighbour(int x, int y)
+	{
+		int dx = rng.between(-1, 1);
+		int dy = rng.between(-1, 1);
+		return { x + dx, y + dy };
+	}
 	int createPartTempVel(int i, int x, int y, int t);
 	void delete_part(int x, int y);
 	void get_sign_pos(int i, int *x0, int *y0, int *w, int *h);

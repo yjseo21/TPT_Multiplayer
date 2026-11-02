@@ -65,7 +65,7 @@ static int update(UPDATE_FUNC_ARGS)
 		}
 	}
 	if (parts[i].temp > 303 && parts[i].temp < 317) {
-		sim->create_part(-1, x + sim->rng.between(-1, 1), y + sim->rng.between(-1, 1), PT_YEST);
+		sim->create_part(-1, sim->RandomNeighbour(x, y), PT_YEST);
 	}
 	return 0;
 }

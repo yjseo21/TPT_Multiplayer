@@ -112,6 +112,12 @@ world and a scene for every element on each platform:
   let each compiler reorder and approximate arithmetic its own way.
 - **Denormals.** Windows and Linux builds flush them to zero, but macOS builds
   didn't.
+- **Evaluation order (macOS).** C++ doesn't fix the order in which a call's
+  arguments, or the operands of `+`, are evaluated. GCC and MSVC go right to
+  left, clang left to right. In 16 places two random draws shared one call,
+  as in `create_part(-1, x + rng.between(-1, 1), y + rng.between(-1, 1), ...)`,
+  so a Mac spawned particles at a different neighbour. Found when CI's Intel
+  Mac produced a different fingerprint, then reproduced with clang on Linux.
 
 Fixes:
 - **`simulation/DeterministicMath`:** `sin`, `cos`, `atan2`, `exp`, `log`,
@@ -123,13 +129,19 @@ Fixes:
   -ffp-contract=off` and `/fp:precise`. Physics speed is unchanged in the
   benchmark scenes.
 - **Rooms flush denormals on every CPU,** including ARM64 (`FPCR.FZ`).
+- **Fixed draw order:** `Simulation::RandomNeighbour` draws x, then y, and the
+  sand colour noise uses one draw per statement. A script checks that no
+  statement in the simulation makes two unsequenced random draws. Paste
+  placement uses a stable sort, so particles stacked on one pixel keep their
+  order on every C++ library.
 - **Fireworks crashed any program without a renderer** (a room server that
   never served a video player): their colour table was empty. Every room world
   now fills the tables.
 
 Verification:
-- **The probe:** Linux (GCC, glibc) and Windows (MinGW, UCRT) produce
-  identical fingerprints at all 216 checkpoints.
+- **The probe:** Linux GCC, Linux clang and Windows (MinGW, UCRT) produce
+  identical fingerprints at all 216 checkpoints. They also match the value
+  CI's Intel Mac computed.
 - **A real room:** a Windows client against a Linux server, with 28 edits,
   verified all 40 fingerprints with no resyncs. Before the fix it diverged at
   tick 60.

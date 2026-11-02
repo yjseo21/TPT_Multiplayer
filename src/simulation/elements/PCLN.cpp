@@ -146,7 +146,7 @@ static int update(UPDATE_FUNC_ARGS)
 		}
 		else if (parts[i].ctype != PT_LIGH || sim->rng.chance(1, 30))
 		{
-			int np = sim->create_part(-1, x + sim->rng.between(-1, 1), y + sim->rng.between(-1, 1), TYP(parts[i].ctype));
+			int np = sim->create_part(-1, sim->RandomNeighbour(x, y), TYP(parts[i].ctype));
 			if (np>=0)
 			{
 				if (parts[i].ctype==PT_LAVA && parts[i].tmp>0 && parts[i].tmp<PT_NUM && elements[parts[i].tmp].HighTemperatureTransition==PT_LAVA)

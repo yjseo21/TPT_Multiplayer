@@ -183,7 +183,7 @@ static int update(UPDATE_FUNC_ARGS)
 			element = PT_CO2; //@ PROT -> CO2
 		else
 			element = PT_NBLE; //@ PROT -> NBLE
-		newID = sim->create_part(-1, x + sim->rng.between(-1, 1), y + sim->rng.between(-1, 1), element);
+		newID = sim->create_part(-1, sim->RandomNeighbour(x, y), element);
 		if (newID >= 0)
 			parts[newID].temp = restrict_flt(100.0f*parts[i].tmp, MIN_TEMP, MAX_TEMP);
 		sim->kill_part(i);
