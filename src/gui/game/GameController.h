@@ -264,7 +264,7 @@ public:
 	// air, pressure, velocity, sparks, ambientHeat, temperature or invertAir.
 	bool RoomReset(ByteString what);
 	// While the room is shown: a console command resolved into a room command (admin).
-	void RoomConsole(const Json::Value &command);
+	bool RoomConsole(const Json::Value &command); // false (and a notice) when the room refused it
 	// The in-game dialog (Ctrl+Shift+J): join a room, or leave the current one.
 	void OpenRoomDialog();
 	// Switch between the room's world and the player's own (the room stays connected).

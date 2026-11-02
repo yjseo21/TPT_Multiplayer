@@ -86,6 +86,8 @@ STEPS = [
     dict(at=8.598, do="sign", text="Hello room", x1=120, y1=40),
     dict(at=8.599, do="sign", text="{b|press}", x1=200, y1=40),
     dict(at=8.5995, do="console", text="create metl 200,40"),  # a button sparks the conductor under it
+    # As in single-player, set reports how many particles it changes (the floor).
+    dict(at=8.5997, do="console", text="set life dmnd 0"),
     # The room dialog over the game: the room keeps running underneath.
     dict(at=8.6, do="dialog"),
     dict(at=8.8, do="mark", name="dialog-open"),
@@ -202,6 +204,9 @@ def main():
             assert before["metlDeco"] == 0xFFFF0000 and before["metlTmp2"] == 77, (before.get("metlDeco"), before.get("metlTmp2"))
             assert before["signs"] == 2 and before["buttonSparked"], (before["signs"], before["buttonSparked"])
             # The console's bubble and create reached the room (a ring of 31 SOAP, one METL).
+            # set answers with the number of particles it changes, not 0.
+            setting = next(r for r in g if r.get("console") == "set life dmnd 0")
+            assert setting["result"].isdigit() and int(setting["result"]) >= 1000, setting
             assert before["soapCount"] >= 25 and before["metlCount"] >= 1, (before["soapCount"], before["metlCount"])
             # The pasted copy of the floor reached the room (and the watcher, by fingerprint).
             pasted = [r for r in g if r.get("mark") in ("before-paste", "after-paste")]

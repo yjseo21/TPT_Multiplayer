@@ -2006,13 +2006,15 @@ bool GameController::RoomReset(ByteString what)
 #endif
 }
 
-void GameController::RoomConsole(const Json::Value &command)
+bool GameController::RoomConsole(const Json::Value &command)
 {
 #ifdef TPT_GAME_MULTIPLAYER
 	std::string why;
-	if (!room || !room->Console(command, why))
-		RoomNotice(room && !room->Admin() ? String("Only the room's administrator can change the room from the console.") : ByteString(why).FromUtf8());
+	if (room && room->Console(command, why))
+		return true;
+	RoomNotice(room && !room->Admin() ? String("Only the room's administrator can change the room from the console.") : ByteString(why).FromUtf8());
 #endif
+	return false;
 }
 
 bool GameController::RoomStickmanKey(int key, bool pressed)
@@ -2534,6 +2536,14 @@ void GameController::RunRoomAutomation()
 			// A console line, as typed: the legacy commands need "!" when Lua runs the console.
 			auto text = ByteString(step["text"].asString()).FromUtf8();
 			commandInterface->Command(LUACONSOLE ? "!" + text : text);
+			if (automation->log.is_open())
+			{
+				// What the console shows for it (the result line).
+				Json::Value row;
+				row["console"] = step["text"];
+				row["result"] = commandInterface->GetLastError().ToUtf8();
+				automation->log << multiplayer::JsonText(row) << std::endl;
+			}
 		}
 		else if (act == "key")
 		{

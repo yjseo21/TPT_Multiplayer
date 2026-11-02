@@ -459,8 +459,10 @@ AnyType CommandInterface::tptS_set(std::deque<String> * words)
 		}
 		else
 			throw GeneralException("Invalid selector");
-		c->RoomConsole(command);
-		return NumberType(0);
+		// The room applies it a moment later; report what single-player reports,
+		// the particles it matches in this player's copy of the room right now.
+		auto matched = int(EvaluateSelector(sim, selector).size());
+		return NumberType(c->RoomConsole(command) ? matched : 0);
 	}
 	int returnValue = 0;
 	for (auto index : EvaluateSelector(sim, selector))
