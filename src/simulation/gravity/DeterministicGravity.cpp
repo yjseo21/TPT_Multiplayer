@@ -7,6 +7,11 @@
 // without the C maths library, and keeps to strict IEEE arithmetic (no
 // fast-math, no fused multiply-add) whatever the build flags. Given the same
 // mass and walls it produces the same forces, bit for bit, everywhere.
+//
+// The pragmas below turn fast-math off for this file. They are not enough
+// against fused multiply-add: clang's -ffp-contract=fast (part of -ffast-math)
+// ignores them, and ARM64 fuses. Every product that is then added is therefore
+// passed through Round(), which makes the compiler hold the rounded product.
 #if defined(__clang__)
 # pragma float_control(precise, on)
 # pragma clang fp contract(off)
@@ -38,13 +43,40 @@ struct Complex
 	float re, im;
 };
 
+// The value, rounded to its type now: an empty asm statement that claims to use
+// and change it in a floating-point register, so a multiply before it cannot be
+// fused with an add after it. No instructions are emitted. (MSVC does not fuse
+// on x64 under float_control(precise), so it needs nothing.)
+template<class T>
+inline T Round(T x)
+{
+#if defined(__GNUC__) && (defined(__aarch64__) || defined(__arm__))
+	__asm__("" : "+w"(x));
+#elif defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__))
+	__asm__("" : "+x"(x));
+#elif defined(__GNUC__)
+	__asm__("" : "+g"(x));
+#endif
+	return x;
+}
+
+Complex Multiply(Complex a, Complex b)
+{
+	return { Round(a.re * b.re) - Round(a.im * b.im), Round(a.re * b.im) + Round(a.im * b.re) };
+}
+
 // sin and cos of a in [-pi/4, pi/4] by Taylor series in double precision: the
 // same operations, so the same bits, on every machine (unlike sin() and cos()).
 void SinCos(double a, double &s, double &c)
 {
-	double a2 = a * a;
-	s = a * (1 - a2 / 6 * (1 - a2 / 20 * (1 - a2 / 42 * (1 - a2 / 72 * (1 - a2 / 110 * (1 - a2 / 156 * (1 - a2 / 210)))))));
-	c = 1 - a2 / 2 * (1 - a2 / 12 * (1 - a2 / 30 * (1 - a2 / 56 * (1 - a2 / 90 * (1 - a2 / 132 * (1 - a2 / 182))))));
+	// Horner form, innermost first: s = a (1 - a2/6 (1 - a2/20 (...))), likewise c.
+	double a2 = a * a, ts = 1, tc = 1;
+	for (double d : { 210., 156., 110., 72., 42., 20., 6. })
+		ts = 1 - Round(a2 / d * ts);
+	for (double d : { 182., 132., 90., 56., 30., 12., 2. })
+		tc = 1 - Round(a2 / d * tc);
+	s = a * ts;
+	c = tc;
 }
 
 // exp(-2 pi i k / n) for k < n / 2, from octant-sized angles only.
@@ -91,8 +123,7 @@ void Transform(Complex *a, int n, const std::vector<Complex> &twiddles, bool inv
 				auto w = twiddles[j * step];
 				if (inverse)
 					w.im = -w.im;
-				auto x = a[i + j + half];
-				Complex v{ x.re * w.re - x.im * w.im, x.re * w.im + x.im * w.re };
+				auto v = Multiply(a[i + j + half], w);
 				auto u = a[i + j];
 				a[i + j] = { u.re + v.re, u.im + v.im };
 				a[i + j + half] = { u.re - v.re, u.im - v.im };
@@ -166,8 +197,7 @@ public:
 		// Convolution theorem: multiply the spectra.
 		for (int i = 0; i < Width * Height; ++i)
 		{
-			auto f = grid[i], k = kernel[i];
-			grid[i] = { f.re * k.re - f.im * k.im, f.re * k.im + f.im * k.re };
+			grid[i] = Multiply(grid[i], kernel[i]);
 		}
 		Columns(true);
 		for (int y = 0; y < CELLS.Y; ++y)
