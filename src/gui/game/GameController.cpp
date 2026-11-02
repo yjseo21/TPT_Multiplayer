@@ -16,6 +16,7 @@ namespace multiplayer { class GameSession {}; }
 #include "graphics/Graphics.h"
 #include "graphics/VideoBuffer.h"
 #include "JoinRoomView.h"
+#include "gui/options/OptionsModel.h"
 #include "Menu.h"
 #include "Notification.h"
 #include "QuickOptions.h"
@@ -870,11 +871,12 @@ void GameController::ResetSpark()
 
 void GameController::SwitchGravity()
 {
-	if (RoomRefuses("Changing gravity mode"))
+	auto *sim = gameModel->GetSimulation();
+	auto mode = (gameModel->RequestedRoomSettings().gravityMode.value_or(sim->gravityMode) + 1) % NUM_GRAVMODES;
+	if (showRoom ? !gameModel->ChangeRoomSettings({ .gravityMode = mode }) : (sim->gravityMode = mode, false))
 		return;
-	gameModel->GetSimulation()->gravityMode = (gameModel->GetSimulation()->gravityMode + 1) % NUM_GRAVMODES;
 
-	switch (gameModel->GetSimulation()->gravityMode)
+	switch (mode)
 	{
 	case GRAV_VERTICAL:
 		gameModel->SetInfoTip("Gravity: Vertical");
@@ -893,11 +895,12 @@ void GameController::SwitchGravity()
 
 void GameController::SwitchAir()
 {
-	if (RoomRefuses("Changing air mode"))
+	auto *sim = gameModel->GetSimulation();
+	auto mode = (gameModel->RequestedRoomSettings().airMode.value_or(sim->air->airMode) + 1) % NUM_AIRMODES;
+	if (showRoom ? !gameModel->ChangeRoomSettings({ .airMode = mode }) : (sim->air->airMode = mode, false))
 		return;
-	gameModel->GetSimulation()->air->airMode = (gameModel->GetSimulation()->air->airMode + 1) % NUM_AIRMODES;
 
-	switch (gameModel->GetSimulation()->air->airMode)
+	switch (mode)
 	{
 	case AIR_ON:
 		gameModel->SetInfoTip("Air: On");
@@ -919,8 +922,6 @@ void GameController::SwitchAir()
 
 void GameController::ToggleAHeat()
 {
-	if (RoomRefuses("Changing ambient heat"))
-		return;
 	gameModel->SetAHeatEnable(!gameModel->GetAHeatEnable());
 }
 
@@ -938,8 +939,6 @@ void GameController::ResetAHeat()
 
 void GameController::ToggleNewtonianGravity()
 {
-	if (RoomRefuses("Newtonian gravity"))
-		return;
 	gameModel->SetNewtonianGravity(!gameModel->GetNewtonianGrvity());
 }
 
@@ -1166,17 +1165,20 @@ TempScale GameController::GetTemperatureScale()
 
 int GameController::GetEdgeMode()
 {
+	if (showRoom)
+		return gameModel->RequestedRoomSettings().edgeMode.value_or(gameModel->GetSimulation()->edgeMode);
 	return gameModel->GetEdgeMode();
 }
 
 void GameController::SetEdgeMode(int edgeMode)
 {
-	if (RoomRefuses("Changing edge mode"))
-		return;
 	if (edgeMode < 0 || edgeMode >= NUM_EDGEMODES)
 		edgeMode = 0;
 
-	gameModel->SetEdgeMode(edgeMode);
+	if (!showRoom)
+		gameModel->SetEdgeMode(edgeMode);
+	else if (!gameModel->ChangeRoomSettings({ .edgeMode = edgeMode }))
+		return;
 
 	switch (edgeMode)
 	{
@@ -1918,8 +1920,11 @@ void GameController::CreateDebugInfo()
 // to TPT_MP_AUTOMATION_LOG. Steps: {"at": seconds, "do": ...}, where "do" is
 // tool (identifier), brush (id, rx, ry), points (x1,y1,x2,y2,held), line, rect,
 // fill, toggle, pause (paused), step, clear, local (a refused action), leave,
+// gravity / air / edge / aheat / newtonian (the mode shortcuts), options
+// (gravityMode, customGravityX: as the options dialog sets them),
 // dialog, dialogjoin / dialogcancel (Enter / Escape on it), mark (name: logs a
-// row now), capture (path: saves the window as a PNG), or quit.
+// row now), capture (path: saves the window as a PNG), or quit. Any step with
+// "synced": true first waits for the room to be synchronized.
 struct GameController::RoomAutomation
 {
 	std::vector<Json::Value> steps;
@@ -2030,6 +2035,23 @@ void GameController::JoinRoom(ByteString url, ByteString name, std::optional<Byt
 	showRoom = true;
 	gameModel->ShowSimulation(room->Shown(), room->Paused());
 	CreateDebugInfo();
+	// The options dialog, quick options and mode shortcuts change the room's
+	// settings while it is shown.
+	gameModel->roomSettings = [this](const SimulationSettingsChange &change) {
+		if (change.newtonianGravity.value_or(false))
+		{
+			RoomNotice("Newtonian gravity is not available in rooms yet. Ctrl+Shift+M switches to your own canvas.");
+			return false;
+		}
+		std::string why;
+		if (!room || !room->ChangeSettings(change, why))
+		{
+			RoomNotice(room && !room->Admin() ? String("Only the room's administrator can change simulation settings.") : ByteString(why).FromUtf8());
+			return false;
+		}
+		roomSettingsAt = Platform::GetTime() / 1000.0;
+		return true;
+	};
 	// The room keeps running while a dialog is open over the game.
 	ui::Engine::Ref().backgroundOwner = gameView;
 	ui::Engine::Ref().backgroundTick = [this] { UpdateRoom(); };
@@ -2140,6 +2162,14 @@ void GameController::UpdateRoom()
 		bool inside = mouse.X >= 0 && mouse.X < XRES && mouse.Y >= 0 && mouse.Y < YRES;
 		room->Cursor(inside, mouse.X, mouse.Y, gameModel->GetBrush().GetRadius().X, gameView->IsMouseDown());
 		UpdateRoomOverlay();
+		// Requested settings read back as such until the room has applied them
+		// (or, refused, for a few seconds).
+		if (!gameModel->RequestedRoomSettings().Empty() &&
+		    (room->Settled() || Platform::GetTime() / 1000.0 - roomSettingsAt > 3))
+		{
+			gameModel->ClearRequestedRoomSettings();
+			gameModel->UpdateQuickOptions();
+		}
 		status << ByteString(room->Status()).FromUtf8() << " | Ctrl+Shift+M: your canvas";
 	}
 	else
@@ -2215,6 +2245,12 @@ void GameController::RunRoomAutomation()
 		sample["lastNotice"] = lastRoomNotice.ToUtf8();
 		sample["roomStatus"] = gameView->GetRoomStatus().ToUtf8();
 		sample["dialogOpen"] = ui::Engine::Ref().GetWindow() != gameView;
+		auto *shown = gameModel->GetSimulation();
+		sample["gravityMode"] = shown->gravityMode; sample["airMode"] = shown->air->airMode;
+		sample["edgeMode"] = shown->edgeMode; sample["ambientHeat"] = bool(shown->aheat_enable);
+		sample["newtonianGravity"] = bool(shown->grav);
+		sample["customGravityX"] = shown->customGravityX;
+		sample["ownGravityMode"] = gameModel->GetLocalSimulation()->gravityMode;
 		sample["previewPeak"] = Json::UInt64(roomGhostsPeak);
 		roomGhostsPeak = 0;
 		return sample;
@@ -2233,6 +2269,12 @@ void GameController::RunRoomAutomation()
 	{
 		auto &step = automation->steps[automation->next++];
 		auto act = step["do"].asString();
+		// "synced": wait (up to "within" seconds) until the room's world is shown.
+		if (step["synced"].asBool() && !(room && room->Synchronized()) && now < step["at"].asDouble() + step.get("within", 20).asDouble())
+		{
+			--automation->next;
+			break;
+		}
 		ui::Point a{ step["x1"].asInt(), step["y1"].asInt() }, b{ step["x2"].asInt(), step["y2"].asInt() };
 		if (act == "tool") SetActiveTool(0, ByteString(step["tool"].asString()));
 		else if (act == "brush")
@@ -2250,6 +2292,18 @@ void GameController::RunRoomAutomation()
 		else if (act == "clear") ClearSim();
 		else if (act == "local") ResetAir();
 		else if (act == "leave") LeaveRoom();
+		else if (act == "gravity") SwitchGravity();
+		else if (act == "air") SwitchAir();
+		else if (act == "edge") SetEdgeMode(GetEdgeMode() + 1);
+		else if (act == "aheat") ToggleAHeat();
+		else if (act == "newtonian") ToggleNewtonianGravity();
+		else if (act == "options")
+		{
+			// What the options dialog does with these controls.
+			OptionsModel options(gameModel);
+			if (step.isMember("gravityMode")) options.SetGravityMode(step["gravityMode"].asInt());
+			if (step.isMember("customGravityX")) options.SetCustomGravityX(step["customGravityX"].asFloat());
+		}
 		else if (act == "dialog") OpenRoomDialog();
 		else if (act == "dialogjoin")
 		{

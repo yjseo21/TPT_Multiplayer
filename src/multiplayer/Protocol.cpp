@@ -215,6 +215,56 @@ unsigned Command::Cost() const
     }
     return kind == Brush ? unsigned((std::max(std::abs(x2-x1), std::abs(y2-y1)) + 1) * (2*radius+1) * (2*radius+1)) : 1;
 }
+namespace
+{
+// Ranges follow the options dialog. Floats travel as JSON numbers: a float
+// written as a double and read back is exact, so every machine gets the same bits.
+SimulationSettingsChange ParseSettings(const Json::Value &v)
+{
+    if (!v.isObject() || v.empty()) throw std::runtime_error("invalid settings");
+    SimulationSettingsChange s;
+    size_t known = 0;
+    auto flag = [&](const char *key, std::optional<bool> &out) {
+        if (!v.isMember(key)) return;
+        if (!v[key].isBool()) throw std::runtime_error(std::string("invalid setting ") + key);
+        out = v[key].asBool(); ++known;
+    };
+    auto mode = [&](const char *key, std::optional<int> &out, int count) {
+        if (!v.isMember(key)) return;
+        out = Integer(v, key, 0, count-1); ++known;
+    };
+    auto number = [&](const char *key, std::optional<float> &out, float minimum, float maximum) {
+        if (!v.isMember(key)) return;
+        if (!v[key].isNumeric()) throw std::runtime_error(std::string("invalid setting ") + key);
+        auto value = float(v[key].asDouble());
+        if (!(value >= minimum && value <= maximum)) throw std::runtime_error(std::string("setting out of range: ") + key);
+        out = value; ++known;
+    };
+    flag("heat", s.heat); flag("ambientHeat", s.ambientHeat); flag("waterEqualisation", s.waterEqualisation);
+    flag("newtonianGravity", s.newtonianGravity); flag("prettyPowder", s.prettyPowder);
+    if (s.newtonianGravity.value_or(false)) throw std::runtime_error("Newtonian gravity is not available in rooms yet");
+    mode("airMode", s.airMode, NUM_AIRMODES); mode("edgeMode", s.edgeMode, NUM_EDGEMODES);
+    mode("convectionMode", s.convectionMode, NUM_CONVMODES); mode("gravityMode", s.gravityMode, NUM_GRAVMODES);
+    number("ambientAirTemp", s.ambientAirTemp, MIN_TEMP, MAX_TEMP);
+    number("edgePressure", s.edgePressure, -MAX_PRESSURE, MAX_PRESSURE);
+    number("edgeVelocityX", s.edgeVelocityX, -MAX_PRESSURE, MAX_PRESSURE);
+    number("edgeVelocityY", s.edgeVelocityY, -MAX_PRESSURE, MAX_PRESSURE);
+    number("vorticityCoeff", s.vorticityCoeff, 0, 1);
+    number("customGravityX", s.customGravityX, -1000, 1000);
+    number("customGravityY", s.customGravityY, -1000, 1000);
+    if (known != v.size()) throw std::runtime_error("unknown setting");
+    return s;
+}
+}
+Json::Value SettingsJson(const SimulationSettingsChange &settings)
+{
+    Json::Value out(Json::objectValue);
+    SimulationSettingsChange::Fields([&](const char *key, auto member) {
+        if (auto &value = settings.*member)
+            out[key] = *value;
+    });
+    return out;
+}
 Command ParseCommand(const Json::Value &v, bool admin)
 {
     Command c{}; c.sequence = Sequence(v);
@@ -266,6 +316,11 @@ Command ParseCommand(const Json::Value &v, bool admin)
         }
         else if (op == "step") c.kind = Command::Step;
         else if (op == "clear") c.kind = Command::Clear;
+        else if (op == "settings")
+        {
+            c.kind = Command::Settings;
+            c.settings = ParseSettings(v["settings"]);
+        }
         else throw std::runtime_error("unknown operation");
     }
     return c;

@@ -57,7 +57,17 @@ STEPS = [
     dict(at=8.4, do="toggle"),  # own canvas for 2 s: at least one log row
     # The room dialog over the game: the room keeps running underneath.
     dict(at=8.6, do="dialog"),
+    dict(at=8.8, do="mark", name="dialog-open"),
+    dict(at=10.6, do="mark", name="dialog-later"),
     dict(at=10.8, do="dialogcancel"),
+    # Mode shortcuts change the room's settings, for everyone (the game is admin).
+    dict(at=10.9, do="gravity"),   # vertical -> off
+    dict(at=10.9, do="gravity"),   # off -> radial, both before the first applies
+    dict(at=10.9, do="air"),       # on -> pressure off
+    dict(at=10.9, do="edge"),      # void -> solid
+    dict(at=10.9, do="aheat"),     # off -> on
+    dict(at=10.92, do="options", gravityMode=3, customGravityX=0.5),  # the options dialog: custom
+    dict(at=10.95, do="newtonian"),  # refused, with a notice
     # Administrator controls become room commands.
     dict(at=11.0, do="pause", paused=True),
     dict(at=12.0, do="step"),
@@ -66,7 +76,7 @@ STEPS = [
     dict(at=13.6, do="leave"),
     dict(at=14.2, do="dialog"),
     dict(at=14.5, do="dialogjoin"),
-    dict(at=17.5, do="quit"),
+    dict(at=16.0, do="quit", synced=True),  # once the rejoin has synchronized (slow CI machines)
 ]
 
 
@@ -134,14 +144,21 @@ def main():
             assert before["status"] == "PAUSED" and before["pendingEdits"] == 0, (before, output[-3000:])
             assert before["editLatencySamples"] >= 5, before
             assert "not available in rooms" in before["lastNotice"], before["lastNotice"]
+            assert any("Newtonian gravity is not available" in r.get("lastNotice", "") for r in g), "Newtonian gravity was not refused"
+            # The room's settings changed for this player and (fingerprints verified, no
+            # resync) for the watcher; the player's own world kept its own.
+            assert (before["gravityMode"], before["airMode"], before["edgeMode"], before["ambientHeat"], before["newtonianGravity"]) ==                 (3, 1, 1, True, False) and before["customGravityX"] == 0.5, before
+            assert before["ownGravityMode"] == 0, before
+            assert final["gravityMode"] == 3 and final["edgeMode"] == 1, "a rejoined player gets the room's settings"
             assert final["ownParts"] > 0, "drawing on the own canvas did not reach the own world"
             # Player list in the HUD, and the preview of edits still in flight.
             assert "Game (you, admin)" in before["roomStatus"] and "Watcher" in before["roomStatus"], before["roomStatus"]
             assert max(r.get("previewPeak", 0) for r in g) > 0, "no pending edit was ever previewed"
             assert final["previewPeak"] == 0 or final["pendingEdits"] > 0, final
             # Under the dialog the room's world kept advancing.
-            under = [r for r in g if r.get("dialogOpen") and r.get("inRoom") and r.get("status") != "PAUSED"]
-            assert len(under) >= 2 and under[-1]["localTick"] > under[0]["localTick"], [(r.get("elapsedSeconds"), r.get("localTick")) for r in under]
+            under = [r for r in g if r.get("mark") in ("dialog-open", "dialog-later")]
+            assert len(under) == 2 and all(r["dialogOpen"] and r["status"] != "PAUSED" for r in under), under
+            assert under[1]["localTick"] >= under[0]["localTick"] + 20, [(r["elapsedSeconds"], r["localTick"]) for r in under]
             prefs = json.loads((game_dir / "powder.pref").read_text())
             assert prefs.get("Multiplayer", {}).get("Room") == f"ws://127.0.0.1:{port}", prefs
             assert any("too large" in r.get("lastNotice", "") for r in g), [(round(r.get("elapsedSeconds", -1), 2), r.get("lastNotice"), r.get("appliedCommands")) for r in g]

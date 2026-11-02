@@ -12,6 +12,9 @@ class OptionsModel
 	Simulation * sim;
 	std::vector<OptionsView*> observers;
 	void notifySettingsChanged();
+	Simulation *Shown();
+	const SimulationSettingsChange &Requested();
+	bool ToRoom(const SimulationSettingsChange &change);
 public:
 	OptionsModel(GameModel * gModel);
 	void AddObserver(OptionsView* view);

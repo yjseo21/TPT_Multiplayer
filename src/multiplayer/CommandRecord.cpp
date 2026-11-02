@@ -28,6 +28,7 @@ Json::Value RecordCommand(const Command &c)
         case Command::Pause: v["op"] = "pause"; v["paused"] = c.paused; break;
         case Command::Step: v["op"] = "step"; break;
         case Command::Clear: v["op"] = "clear"; break;
+        case Command::Settings: v["op"] = "settings"; v["settings"] = SettingsJson(c.settings); break;
         default: throw std::runtime_error("unrecognized command kind");
     }
     return v;

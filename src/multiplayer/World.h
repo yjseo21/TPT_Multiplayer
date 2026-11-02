@@ -4,6 +4,8 @@
 
 namespace multiplayer
 {
+// A settings command, as every machine applies it.
+void ApplySettings(Simulation &sim, const SimulationSettingsChange &settings);
 class World
 {
 public:

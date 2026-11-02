@@ -12,11 +12,13 @@ QuickOption("P", "Sand effect", m, Toggle)
 }
 bool SandEffectOption::GetToggle()
 {
-	return m->GetSimulation()->pretty_powder;
+	return m->RequestedRoomSettings().prettyPowder.value_or(m->GetSimulation()->pretty_powder);
 }
 void SandEffectOption::perform()
 {
-	m->GetSimulation()->pretty_powder = !m->GetSimulation()->pretty_powder;
+	bool next = !GetToggle();
+	if (!m->ChangeRoomSettings({ .prettyPowder = next }) && !m->ShowingRoom())
+		m->GetSimulation()->pretty_powder = next;
 }
 
 

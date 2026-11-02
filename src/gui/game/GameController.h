@@ -86,6 +86,7 @@ private:
 	void EndRoom(String why);
 	// Credentials of the latest join, offered again by the dialog (never saved).
 	ByteString lastRoomToken, lastAdminToken;
+	double roomSettingsAt = 0; // when settings were last sent to the room
 	size_t roomGhostsPeak = 0; // largest preview since the last automation log row
 	struct RoomAutomation;
 	std::unique_ptr<RoomAutomation> roomAutomation;

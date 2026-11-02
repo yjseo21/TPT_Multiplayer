@@ -117,4 +117,8 @@ bool GameSession::Clear(std::string &why)
 {
     Json::Value c; c["op"] = "clear"; return SendAdmin(c, why);
 }
+bool GameSession::ChangeSettings(const SimulationSettingsChange &settings, std::string &why)
+{
+    Json::Value c; c["op"] = "settings"; c["settings"] = SettingsJson(settings); return SendAdmin(c, why);
+}
 }

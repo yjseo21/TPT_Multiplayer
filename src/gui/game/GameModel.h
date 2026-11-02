@@ -72,6 +72,7 @@ private:
 	// A room's world, shown instead of the player's own (sim stays untouched).
 	Simulation *shownSim = nullptr;
 	std::optional<bool> roomPaused;
+	SimulationSettingsChange requestedRoomSettings;
 	bool paused = false;
 	int queuedFrames = 0;
 	Renderer * ren;
@@ -286,6 +287,13 @@ public:
 	// Show another world (a room's), or the player's own again with nullptr.
 	void ShowSimulation(Simulation *shown, std::optional<bool> shownPaused);
 	bool ShowingRoom() const { return shownSim != nullptr; }
+	// Simulation settings while a room's world is shown are the room's: a change
+	// goes to roomSettings, which may refuse it (telling the player), and reads
+	// back as requested until the room has applied it.
+	std::function<bool (const SimulationSettingsChange &)> roomSettings;
+	bool ChangeRoomSettings(const SimulationSettingsChange &change);
+	const SimulationSettingsChange &RequestedRoomSettings() const { return requestedRoomSettings; }
+	void ClearRequestedRoomSettings() { requestedRoomSettings = {}; }
 	Renderer * GetRenderer();
 	RendererSettings &GetRendererSettings()
 	{

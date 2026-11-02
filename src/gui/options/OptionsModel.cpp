@@ -12,7 +12,7 @@
 
 OptionsModel::OptionsModel(GameModel * gModel_) {
 	gModel = gModel_;
-	sim = gModel->GetSimulation();
+	sim = gModel->GetLocalSimulation(); // the player's own world; a room's goes through ToRoom
 }
 
 void OptionsModel::AddObserver(OptionsView* view)
@@ -21,66 +21,100 @@ void OptionsModel::AddObserver(OptionsView* view)
 	view->NotifySettingsChanged(this);
 }
 
+// Simulation settings are read from the shown world. In a multiplayer room they
+// are the room's: a change goes to the room instead, and reads back as requested
+// until the room has applied it.
+Simulation *OptionsModel::Shown()
+{
+	return gModel->GetSimulation();
+}
+
+const SimulationSettingsChange &OptionsModel::Requested()
+{
+	return gModel->RequestedRoomSettings();
+}
+
+bool OptionsModel::ToRoom(const SimulationSettingsChange &change)
+{
+	if (!gModel->ShowingRoom())
+		return false;
+	gModel->ChangeRoomSettings(change);
+	notifySettingsChanged();
+	return true;
+}
+
 bool OptionsModel::GetHeatSimulation()
 {
-	return sim->legacy_enable?false:true;
+	return Requested().heat.value_or(!Shown()->legacy_enable);
 }
 
 void OptionsModel::SetHeatSimulation(bool state)
 {
+	if (ToRoom({ .heat = state }))
+		return;
 	sim->legacy_enable = state?0:1;
 	notifySettingsChanged();
 }
 
 bool OptionsModel::GetAmbientHeatSimulation()
 {
-	return sim->aheat_enable?true:false;
+	return Requested().ambientHeat.value_or(Shown()->aheat_enable);
 }
 
 void OptionsModel::SetAmbientHeatSimulation(bool state)
 {
+	if (ToRoom({ .ambientHeat = state }))
+		return;
 	sim->aheat_enable = state?1:0;
 	notifySettingsChanged();
 }
 
 bool OptionsModel::GetNewtonianGravity()
 {
-	return bool(sim->grav);
+	return bool(Shown()->grav);
 }
 
 void OptionsModel::SetNewtonianGravity(bool state)
 {
+	if (ToRoom({ .newtonianGravity = state }))
+		return;
 	sim->EnableNewtonianGravity(state);
 	notifySettingsChanged();
 }
 
 bool OptionsModel::GetWaterEqualisation()
 {
-	return sim->water_equal_test?true:false;
+	return Requested().waterEqualisation.value_or(Shown()->water_equal_test);
 }
 
 void OptionsModel::SetWaterEqualisation(bool state)
 {
+	if (ToRoom({ .waterEqualisation = state }))
+		return;
 	sim->water_equal_test = state?1:0;
 	notifySettingsChanged();
 }
 
 int OptionsModel::GetAirMode()
 {
-	return sim->air->airMode;
+	return Requested().airMode.value_or(Shown()->air->airMode);
 }
 void OptionsModel::SetAirMode(int airMode)
 {
+	if (ToRoom({ .airMode = airMode }))
+		return;
 	sim->air->airMode = airMode;
 	notifySettingsChanged();
 }
 
 int OptionsModel::GetEdgeMode()
 {
-	return gModel->GetSimulation()->edgeMode;
+	return Requested().edgeMode.value_or(Shown()->edgeMode);
 }
 void OptionsModel::SetEdgeMode(int edgeMode)
 {
+	if (ToRoom({ .edgeMode = edgeMode }))
+		return;
 	GlobalPrefs::Ref().Set("Simulation.EdgeMode", edgeMode);
 	gModel->SetEdgeMode(edgeMode);
 	notifySettingsChanged();
@@ -111,10 +145,12 @@ void OptionsModel::SetThreadedRendering(bool newThreadedRendering)
 
 float OptionsModel::GetAmbientAirTemperature()
 {
-	return gModel->GetSimulation()->air->ambientAirTemp;
+	return Requested().ambientAirTemp.value_or(Shown()->air->ambientAirTemp);
 }
 void OptionsModel::SetAmbientAirTemperature(float ambientAirTemp)
 {
+	if (ToRoom({ .ambientAirTemp = ambientAirTemp }))
+		return;
 	GlobalPrefs::Ref().Set("Simulation.AmbientAirTemp", ambientAirTemp);
 	gModel->SetAmbientAirTemperature(ambientAirTemp);
 	notifySettingsChanged();
@@ -122,10 +158,12 @@ void OptionsModel::SetAmbientAirTemperature(float ambientAirTemp)
 
 float OptionsModel::GetEdgePressure()
 {
-	return gModel->GetSimulation()->air->edgePressure;
+	return Requested().edgePressure.value_or(Shown()->air->edgePressure);
 }
 void OptionsModel::SetEdgePressure(float edgePressure)
 {
+	if (ToRoom({ .edgePressure = edgePressure }))
+		return;
 	GlobalPrefs::Ref().Set("Simulation.EdgePressure", edgePressure);
 	gModel->SetEdgePressure(edgePressure);
 	notifySettingsChanged();
@@ -133,10 +171,12 @@ void OptionsModel::SetEdgePressure(float edgePressure)
 
 float OptionsModel::GetEdgeVelocityX()
 {
-	return gModel->GetSimulation()->air->edgeVelocityX;
+	return Requested().edgeVelocityX.value_or(Shown()->air->edgeVelocityX);
 }
 void OptionsModel::SetEdgeVelocityX(float edgeVelocityX)
 {
+	if (ToRoom({ .edgeVelocityX = edgeVelocityX }))
+		return;
 	GlobalPrefs::Ref().Set("Simulation.EdgeVelocityX", edgeVelocityX);
 	gModel->SetEdgeVelocityX(edgeVelocityX);
 	notifySettingsChanged();
@@ -144,10 +184,12 @@ void OptionsModel::SetEdgeVelocityX(float edgeVelocityX)
 
 float OptionsModel::GetEdgeVelocityY()
 {
-	return gModel->GetSimulation()->air->edgeVelocityY;
+	return Requested().edgeVelocityY.value_or(Shown()->air->edgeVelocityY);
 }
 void OptionsModel::SetEdgeVelocityY(float edgeVelocityY)
 {
+	if (ToRoom({ .edgeVelocityY = edgeVelocityY }))
+		return;
 	GlobalPrefs::Ref().Set("Simulation.EdgeVelocityY", edgeVelocityY);
 	gModel->SetEdgeVelocityY(edgeVelocityY);
 	notifySettingsChanged();
@@ -155,10 +197,12 @@ void OptionsModel::SetEdgeVelocityY(float edgeVelocityY)
 
 float OptionsModel::GetVorticityCoeff()
 {
-	return gModel->GetSimulation()->air->vorticityCoeff;
+	return Requested().vorticityCoeff.value_or(Shown()->air->vorticityCoeff);
 }
 void OptionsModel::SetVorticityCoeff(float vorticityCoeff)
 {
+	if (ToRoom({ .vorticityCoeff = vorticityCoeff }))
+		return;
 	GlobalPrefs::Ref().Set("Simulation.VorticityCoeff", vorticityCoeff);
 	gModel->SetVorticityCoeff(vorticityCoeff);
 	notifySettingsChanged();
@@ -166,10 +210,12 @@ void OptionsModel::SetVorticityCoeff(float vorticityCoeff)
 
 int OptionsModel::GetConvectionMode()
 {
-	return gModel->GetSimulation()->air->convectionMode;
+	return Requested().convectionMode.value_or(Shown()->air->convectionMode);
 }
 void OptionsModel::SetConvectionMode(int convMode)
 {
+	if (ToRoom({ .convectionMode = convMode }))
+		return;
 	GlobalPrefs::Ref().Set("Simulation.ConvectionMode", convMode);
 	gModel->SetConvectionMode(convMode);
 	notifySettingsChanged();
@@ -177,32 +223,38 @@ void OptionsModel::SetConvectionMode(int convMode)
 
 int OptionsModel::GetGravityMode()
 {
-	return sim->gravityMode;
+	return Requested().gravityMode.value_or(Shown()->gravityMode);
 }
 void OptionsModel::SetGravityMode(int gravityMode)
 {
+	if (ToRoom({ .gravityMode = gravityMode }))
+		return;
 	sim->gravityMode = gravityMode;
 	notifySettingsChanged();
 }
 
 float OptionsModel::GetCustomGravityX()
 {
-	return sim->customGravityX;
+	return Requested().customGravityX.value_or(Shown()->customGravityX);
 }
 
 void OptionsModel::SetCustomGravityX(float x)
 {
+	if (ToRoom({ .customGravityX = x }))
+		return;
 	sim->customGravityX = x;
 	notifySettingsChanged();
 }
 
 float OptionsModel::GetCustomGravityY()
 {
-	return sim->customGravityY;
+	return Requested().customGravityY.value_or(Shown()->customGravityY);
 }
 
 void OptionsModel::SetCustomGravityY(float y)
 {
+	if (ToRoom({ .customGravityY = y }))
+		return;
 	sim->customGravityY = y;
 	notifySettingsChanged();
 }

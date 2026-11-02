@@ -1,5 +1,6 @@
 #pragma once
 #include "Session.h"
+#include "simulation/SimulationSettings.h"
 #include <json/json.h>
 #include <deque>
 #include <memory>
@@ -55,6 +56,11 @@ public:
     bool SetPaused(bool paused, std::string &why);
     bool Step(std::string &why);
     bool Clear(std::string &why);
+    // The room's simulation settings (admin), applied in order with edits.
+    bool ChangeSettings(const SimulationSettingsChange &settings, std::string &why);
+    // Every edit this player made has been applied to the shown world (or the
+    // connection that carried it is gone).
+    bool Settled() const { return outbox.empty() && session.OwnCommitted() >= session.Edits().Last(); }
     void Cursor(bool visible, int x, int y, int radius, bool drawing) { session.SendCursor(visible, x, y, radius, drawing); }
 
     // Commands accepted but not yet sent (paced to the server's editing budget).

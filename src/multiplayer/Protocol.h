@@ -1,5 +1,6 @@
 #pragma once
 #include "simulation/Simulation.h"
+#include "simulation/SimulationSettings.h"
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -12,7 +13,7 @@ constexpr unsigned ProtocolVersion = 3;
 constexpr size_t MaxFrameBytes = 32 * 1024 * 1024;
 constexpr size_t MaxCommandBytes = 4096;
 // Bump with any change to the engine, serializer, or enabled elements.
-constexpr const char *BuildId = "tpt-c205becb-mp3-ingame1";
+constexpr const char *BuildId = "tpt-c205becb-mp3-ingame2";
 
 struct Frame
 {
@@ -30,7 +31,7 @@ int Integer(const Json::Value &value, const char *field, int minimum, int maximu
 
 struct Command
 {
-    enum Kind { Brush, Pause, Step, Clear, ToolAction } kind;
+    enum Kind { Brush, Pause, Step, Clear, ToolAction, Settings } kind;
     uint64_t sequence;
     int x1 = 0, y1 = 0, x2 = 0, y2 = 0, radius = 0, element = 0;
     int radiusY = 0; // tool brushes: vertical radius (radius is horizontal)
@@ -39,9 +40,12 @@ struct Command
     int flags = 0, replace = 0;
     bool dragging = true, shift = false, ctrl = false, alt = false;
     int strength = 100;
+    SimulationSettingsChange settings; // Settings: the room's simulation settings (admin)
     unsigned Cost() const;
 };
 Command ParseCommand(const Json::Value &json, bool admin);
+// The "settings" member of a settings command: only the fields that are set.
+Json::Value SettingsJson(const SimulationSettingsChange &settings);
 // Brush-cell operations: one tool command, and a player's sustained rate (and burst).
 constexpr unsigned ToolCommandCostLimit = 1000000;
 constexpr double EditWorkPerSecond = 3000000;

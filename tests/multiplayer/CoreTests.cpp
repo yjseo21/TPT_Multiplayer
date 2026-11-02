@@ -12,6 +12,9 @@
 #include "simulation/SimulationData.h"
 #include "simulation/ElementClasses.h"
 #include "prefs/GlobalPrefs.h"
+#include "client/GameSave.h"
+#include "common/platform/Platform.h"
+#include "simulation/Air.h"
 #include <functional>
 #include <cmath>
 #include <iostream>
@@ -322,6 +325,39 @@ int main()
         nextProbe = metrics.BeginProbe(20); telemetry["id"] = nextProbe["id"];
         telemetry["serverReceivedUs"] = Json::UInt64(120080000); telemetry["serverSentUs"] = Json::UInt64(120050000);
         Reject([&] { metrics.Telemetry(telemetry, 20.13); });
+        {
+            // Room settings: admin only, validated, recorded exactly, applied like the options dialog.
+            auto settings = ParseJson(R"({"seq":3,"op":"settings","settings":{"gravityMode":3,"customGravityX":0.1,"customGravityY":-0.3,"edgeMode":1,"airMode":2,"ambientHeat":true,"ambientAirTemp":300.15,"prettyPowder":true}})");
+            Reject([&] { ParseCommand(settings, false); });
+            auto command = ParseCommand(settings, true);
+            Check(command.kind == Command::Settings && command.settings.gravityMode == 3 && !command.settings.heat, "settings are parsed, unset ones stay unset");
+            auto again = ParseCommand(ParseJson(JsonText(RecordCommand(command))), true);
+            Check(again.settings.customGravityX == command.settings.customGravityX && *again.settings.customGravityX == 0.1f &&
+                  again.settings.ambientAirTemp == command.settings.ambientAirTemp, "a recorded setting keeps its exact float bits");
+            World w;
+            w.Apply(command);
+            Check(w.sim->gravityMode == GRAV_CUSTOM && w.sim->customGravityY == -0.3f && w.sim->edgeMode == EDGE_SOLID &&
+                  w.sim->bmap[0][0] == WL_WALL && w.sim->air->airMode == AIR_VELOCITYOFF && w.sim->aheat_enable &&
+                  w.sim->pretty_powder && !w.sim->legacy_enable, "settings apply like the options dialog");
+            for (auto bad : { R"({"gravityMode":4})", R"({"edgeMode":-1})", R"({"ambientAirTemp":100000})",
+                              R"({"customGravityX":"1"})", R"({"heat":1})", R"({"newtonianGravity":true})", R"({"warp":1})", R"({})" })
+            {
+                auto invalid = ParseJson(R"({"seq":4,"op":"settings"})");
+                invalid["settings"] = ParseJson(bad);
+                Reject([&] { ParseCommand(invalid, true); });
+            }
+            settings["settings"] = ParseJson(R"({"newtonianGravity":false,"heat":false})");
+            w.Apply(ParseCommand(settings, true));
+            Check(w.sim->legacy_enable && !w.sim->grav, "turning Newtonian gravity off is accepted and changes nothing");
+            // Saves with Newtonian gravity cannot become rooms (its worker thread is not deterministic).
+            auto save = w.CaptureSave(); save->gravityEnable = true;
+            auto [missing, data] = save->Serialise();
+            Check(!missing && Platform::WriteFile(data, "newtonian-test.cps"), "write a Newtonian gravity save");
+            auto before = w.resetGeneration;
+            Reject([&] { w.Load("newtonian-test.cps"); });
+            Check(w.resetGeneration == before && w.sim->gravityMode == GRAV_CUSTOM, "a refused save leaves the room's world alone");
+            Platform::RemoveFile("newtonian-test.cps");
+        }
         EditSession edits;
         Check(edits.Begin() == 1 && edits.Begin() == 2, "editing sequences increase per connection");
         edits.Acknowledge(1);
@@ -330,7 +366,7 @@ int main()
         Check(edits.Begin() == 1, "new connection starts a fresh sequence space");
         edits.Acknowledge(1); edits.Disconnect();
         Check(edits.Uncertain() == 1 && edits.Pending() == 0, "acknowledged edits are never replayed or counted uncertain");
-        std::cout << "Core tests passed: physics, paused editing, state and canvas codecs, resync, views, bandwidth budget, malformed input, permissions.\n";
+        std::cout << "Core tests passed: physics, paused editing, state and canvas codecs, resync, views, bandwidth budget, malformed input, permissions, room settings.\n";
         return 0;
     }
     catch (const std::exception &e) { std::cerr << e.what() << '\n'; return 1; }

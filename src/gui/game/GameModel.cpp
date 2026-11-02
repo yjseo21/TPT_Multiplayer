@@ -949,8 +949,18 @@ void GameModel::ShowSimulation(Simulation *shown, std::optional<bool> shownPause
 	bool pausedChanged = GetPaused() != (shown ? shownPaused.value_or(true) : paused);
 	shownSim = shown;
 	roomPaused = shown ? std::optional<bool>(shownPaused.value_or(true)) : std::nullopt;
+	if (simulationChanged)
+		requestedRoomSettings = {};
 	if (simulationChanged) notifySimulationChanged();
 	if (pausedChanged) notifyPausedChanged();
+}
+
+bool GameModel::ChangeRoomSettings(const SimulationSettingsChange &change)
+{
+	if (!shownSim || !roomSettings || !roomSettings(change))
+		return false;
+	requestedRoomSettings.Merge(change);
+	return true;
 }
 
 Renderer * GameModel::GetRenderer()
@@ -1168,7 +1178,13 @@ bool GameModel::GetDecoration()
 
 void GameModel::SetAHeatEnable(bool aHeat)
 {
-	sim->aheat_enable = aHeat;
+	if (ShowingRoom())
+	{
+		if (!ChangeRoomSettings({ .ambientHeat = aHeat }))
+			return;
+	}
+	else
+		sim->aheat_enable = aHeat;
 	UpdateQuickOptions();
 	if (aHeat)
 		SetInfoTip("Ambient Heat: On");
@@ -1178,7 +1194,7 @@ void GameModel::SetAHeatEnable(bool aHeat)
 
 bool GameModel::GetAHeatEnable()
 {
-	return sim->aheat_enable;
+	return requestedRoomSettings.ambientHeat.value_or(GetSimulation()->aheat_enable);
 }
 
 void GameModel::ResetAHeat()
@@ -1188,6 +1204,11 @@ void GameModel::ResetAHeat()
 
 void GameModel::SetNewtonianGravity(bool newtonainGravity)
 {
+	if (ShowingRoom())
+	{
+		ChangeRoomSettings({ .newtonianGravity = newtonainGravity }); // refused, with a notice
+		return;
+	}
 	sim->EnableNewtonianGravity(newtonainGravity);
     if (newtonainGravity)
     {
@@ -1202,7 +1223,7 @@ void GameModel::SetNewtonianGravity(bool newtonainGravity)
 
 bool GameModel::GetNewtonianGrvity()
 {
-    return bool(sim->grav);
+    return bool(GetSimulation()->grav);
 }
 
 void GameModel::ShowGravityGrid(bool showGrid)
