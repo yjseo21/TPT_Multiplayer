@@ -71,7 +71,9 @@ def bomb_steps(shots):
          dict(at=1.52, do="tool", tool="DEFAULT_PT_C5"),
          dict(at=1.53, do="points", x1=300, y1=178, x2=300, y2=178, held=False),   # the charge
          dict(at=1.54, do="tool", tool="DEFAULT_PT_LNTG"),
-         dict(at=1.55, do="rect", x1=294, y1=160, x2=306, y2=165),                # the cold trigger, touching it
+         # The cold trigger wraps the charge's whole top half: C-5 fires only next to
+         # something below 100 K, so a touch at one point could boil off first.
+         dict(at=1.55, do="rect", x1=284, y1=158, x2=316, y2=178),
          dict(at=1.56, do="tool", tool="DEFAULT_PT_SNOW"),
          dict(at=1.57, do="rect", x1=280, y1=146, x2=320, y2=198),                # all packed in snow
          dict(at=1.7, do="copy", x1=276, y1=138, x2=324, y2=198),

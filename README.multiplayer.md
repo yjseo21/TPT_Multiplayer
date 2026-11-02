@@ -129,8 +129,8 @@ and allow TCP 34403 in Windows Defender Firewall.
   - `--recover` restarts from the newest one.
   - `--save world.cps` saves on shutdown.
 - **Room speed:** `--tick-rate 60`, the physics rate.
-- **Bandwidth:** each player uses about 0.05 Mbit/s while playing, whatever
-  the world contains. A join sends the world once (about 1–3 MB), at up to
+- **Bandwidth:** each player uses about 0.025 Mbit/s while playing, whatever
+  the world contains (`--seal-batch-ms 50` brings it to about 0.015). A join sends the world once (about 1–3 MB), at up to
   `--bandwidth-kbps 8192` per player.
 - **Security:**
   - 5 wrong passwords in a minute lock that address out for a minute.
