@@ -35,6 +35,7 @@ struct Options
     bool localSim = false;
     uint64_t debugCorruptTick = 0; // test-only: perturb local state once to exercise resync
     double debugStepDelayMs = 0;   // test-only: a slower computer
+    bool debugNoSkipAhead = false; // test-only: stay behind rather than jump ahead
     bool listTools = false;
     std::string tool, commands;
 };
@@ -46,6 +47,7 @@ Options Arguments(int argc, char **argv)
         std::string a = argv[i];
         if (a == "--headless") { o.headless = true; continue; }
         if (a == "--no-reconnect") { o.reconnect = false; continue; }
+        if (a == "--debug-no-skip-ahead") { o.debugNoSkipAhead = true; continue; }
         if (a == "--list-tools") { o.listTools = true; continue; }
         if (a == "--local-sim") { o.localSim = true; continue; }
         if (a == "--help")
@@ -239,6 +241,7 @@ int main(int argc, char **argv)
         sessionOptions.localSim = options.localSim; sessionOptions.reconnect = options.reconnect;
         sessionOptions.view = options.view; sessionOptions.debugCorruptTick = options.debugCorruptTick;
         sessionOptions.debugStepDelayMs = options.debugStepDelayMs;
+        sessionOptions.debugNoSkipAhead = options.debugNoSkipAhead;
         sessionOptions.serverErrorsFatal = !options.commands.empty();
         Session session(sessionOptions);
         // The picture of a local-simulation session is rendered here.

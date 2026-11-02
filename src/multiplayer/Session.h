@@ -26,6 +26,7 @@ struct SessionOptions
     int view = 0;
     uint64_t debugCorruptTick = 0; // test-only: perturb local state once to exercise resync
     double debugStepDelayMs = 0;   // test-only: a slower computer (extra time per local tick)
+    bool debugNoSkipAhead = false; // test-only: an overloaded CI machine stays behind instead
 };
 
 // One player's connection to a room, independent of any user interface.

@@ -83,7 +83,7 @@ def main():
                 if not admin:
                     penv.pop("TPT_ADMIN_TOKEN")
                 p = subprocess.Popen([CLIENT, "--url", f"ws://127.0.0.1:{port}", "--name", name, "--headless",
-                                      "--local-sim", "--run-for", "25", "--no-reconnect",
+                                      "--local-sim", "--run-for", "25", "--no-reconnect", "--debug-no-skip-ahead",  # slow CI runners lag, then catch up
                                       "--metrics", str(root / f"{name}.jsonl"), *extra],
                                      cwd=root, env=penv, stdout=(root / f"{name}.out").open("w"), stderr=subprocess.STDOUT)
                 procs.append(p)

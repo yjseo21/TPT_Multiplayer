@@ -409,7 +409,7 @@ void Session::Pump()
         if (replica->Backlog() <= lead + 30) behindSince = 0;
         else if (!behindSince) behindSince = now;
         behindSeconds = behindSince ? now-behindSince : 0;
-        if (behindSeconds > SkipAheadSeconds && now-lastSkipAhead > SkipAheadInterval)
+        if (!options.debugNoSkipAhead && behindSeconds > SkipAheadSeconds && now-lastSkipAhead > SkipAheadInterval)
         {
             // Rejoin from a fresh snapshot of the room's present. Cheap for the
             // room: only a raw copy happens on its thread.

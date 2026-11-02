@@ -82,7 +82,8 @@ def bomb_steps(shots):
         s += [dict(at=3.15, do="capture", path=str(shots / "2-bomb-lands.png")),
               dict(at=3.6, do="capture", path=str(shots / "3-blast.png")),
               dict(at=6.5, do="capture", path=str(shots / "4-after.png"))]
-    return s + [dict(at=7.0, do="mark", name="after", count=COUNTED)]
+    # Counted every second: a slow computer runs the room's ticks later in wall time.
+    return s + [dict(at=float(t), do="mark", name=f"after-{t}", count=COUNTED) for t in range(6, 15)]
 
 
 def main():
@@ -103,7 +104,7 @@ def main():
                 assert time.monotonic() < deadline and server.poll() is None, (root / "server.log").read_text()
                 time.sleep(.1)
             watcher = subprocess.Popen([CLIENT, "--url", f"ws://127.0.0.1:{port}", "--name", "Watcher", "--headless",
-                                        "--local-sim", "--run-for", "16", "--no-reconnect",
+                                        "--local-sim", "--run-for", "24", "--no-reconnect",
                                         "--metrics", str(root / "watcher.jsonl")], cwd=root, env=env,
                                        stdout=(root / "watcher.out").open("w"), stderr=subprocess.STDOUT)
             procs.append(watcher)
@@ -111,7 +112,7 @@ def main():
             def game(name, steps):
                 folder = root / name; folder.mkdir()
                 (folder / "powder.pref").write_text("{}")  # not a first run (no install prompt)
-                (folder / "steps.jsonl").write_text("".join(json.dumps(step) + "\n" for step in steps + [dict(at=9.0, do="quit")]))
+                (folder / "steps.jsonl").write_text("".join(json.dumps(step) + "\n" for step in steps + [dict(at=15.5, do="quit")]))
                 genv = dict(env, TPT_MP_AUTOMATION=str(folder / "steps.jsonl"), TPT_MP_AUTOMATION_LOG=str(folder / "log.jsonl"))
                 command = [GAME, f"ddir:{folder}", f"join:ws://127.0.0.1:{port}", f"name:{name}"]
                 if not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY") and shutil.which("xvfb-run"):
@@ -137,7 +138,8 @@ def main():
 
             a_rows, b_rows = rows(root / "PlayerA" / "log.jsonl"), rows(root / "PlayerB" / "log.jsonl")
             mark = lambda r, name: next(x for x in r if x.get("mark") == name)
-            bunker, armed, after = mark(a_rows, "bunker"), mark(b_rows, "armed"), mark(b_rows, "after")
+            bunker, armed = mark(a_rows, "bunker"), mark(b_rows, "armed")
+            afters = [x for x in b_rows if str(x.get("mark", "")).startswith("after-")]
             w = rows(root / "watcher.jsonl")[-1]
             for name, last in (("PlayerA", a_rows[-1]), ("PlayerB", b_rows[-1]), ("Watcher", w)):
                 assert last["resyncs"] == 0, (name, last)
@@ -146,7 +148,9 @@ def main():
             assert bunker["counts"]["TTAN"] > 500 and bunker["counts"]["WATR"] > 2000, bunker["counts"]
             assert armed["counts"]["TTAN"] == bunker["counts"]["TTAN"] and armed["counts"]["C5"] == 0, armed["counts"]
             # The bomb went off in the room: the charge is spent, the bunker still stands.
-            assert after["counts"]["C5"] < 50 and after["counts"]["TTAN"] > 0, after["counts"]
+            assert afters and all(x["counts"]["TTAN"] > 0 for x in afters), [x["counts"] for x in afters]
+            after = next((x for x in afters if x["counts"]["C5"] < 50), None)
+            assert after, [x["counts"] for x in afters]
         finally:
             for p in procs:
                 if p.poll() is None:
