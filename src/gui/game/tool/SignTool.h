@@ -1,5 +1,8 @@
 #pragma once
 #include "Tool.h"
+#include "simulation/Sign.h"
+#include <functional>
+#include <optional>
 
 class GameModel;
 
@@ -16,6 +19,11 @@ public:
 		),
 		gameModel(model)
 	{}
+
+	// Multiplayer: set while a room's world is shown. The sign window then never
+	// changes the world itself: it hands the change here (index -1: a new sign;
+	// original: the sign as the window found it; result: none to delete it).
+	std::function<void (int index, std::optional<sign> original, std::optional<sign> result)> roomChange;
 
 	static std::unique_ptr<VideoBuffer> GetIcon(int toolID, Vec2<int> size);
 	void Click(Simulation * sim, Brush const &brush, ui::Point position) override;

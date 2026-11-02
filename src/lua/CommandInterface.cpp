@@ -10,6 +10,7 @@
 #include "gui/game/GameModel.h"
 #include "gui/interface/Engine.h"
 #include "common/Assert.h"
+#include <json/json.h>
 #include <cmath>
 #include <cstddef>
 #include <cstdlib>
@@ -355,8 +356,6 @@ AnyType CommandInterface::tptS_set(std::deque<String> * words)
 	AnyType value = eval(words);
 
 	Simulation * sim = m->GetSimulation();
-	if (m->ShowingRoom())
-		throw GeneralException("Changing the world from the console is not available in rooms yet");
 	auto prop = GetPropertyOffset(property.Value().ToUtf8());
 	if (!prop)
 	{
@@ -432,6 +431,37 @@ AnyType CommandInterface::tptS_set(std::deque<String> * words)
 		throw GeneralException(ByteString(ex.what()).FromUtf8());
 	}
 
+	if (m->ShowingRoom())
+	{
+		// The room's world: the resolved property and value go to the room (admin only).
+		Json::Value command;
+		command["op"] = "console"; command["cmd"] = "set"; command["property"] = *prop;
+		std::visit([&](auto v) { command["value"] = v; }, changeProperty.propertyValue);
+		if (selector.GetType() == TypePoint)
+		{
+			auto point = ((PointType)selector).Value();
+			if (point.X < 0 || point.Y < 0 || point.Y >= YRES || point.X >= XRES)
+				throw GeneralException("Invalid position");
+			command["selector"] = "point"; command["x1"] = point.X; command["y1"] = point.Y;
+		}
+		else if (selector.GetType() == TypeNumber)
+		{
+			command["selector"] = "index"; command["index"] = ((NumberType)selector).Value();
+		}
+		else if (selector.GetType() == TypeString && ((StringType)selector).Value() == "all")
+			command["selector"] = "all";
+		else if (selector.GetType() == TypeString)
+		{
+			auto type = SimulationData::CRef().GetParticleType(((StringType)selector).Value().ToUtf8());
+			if (type <= 0 || type >= PT_NUM)
+				throw GeneralException("Invalid particle type");
+			command["selector"] = "type"; command["element"] = type;
+		}
+		else
+			throw GeneralException("Invalid selector");
+		c->RoomConsole(command);
+		return NumberType(0);
+	}
 	int returnValue = 0;
 	for (auto index : EvaluateSelector(sim, selector))
 	{
@@ -488,8 +518,6 @@ AnyType CommandInterface::tptS_create(std::deque<String> * words)
 	PointType position = eval(words);
 
 	Simulation * sim = m->GetSimulation();
-	if (m->ShowingRoom())
-		throw GeneralException("Changing the world from the console is not available in rooms yet");
 
 	int type;
 	if(createType.GetType() == TypeNumber)
@@ -506,6 +534,14 @@ AnyType CommandInterface::tptS_create(std::deque<String> * words)
 	if(tempPoint.X<0 || tempPoint.Y<0 || tempPoint.Y >= YRES || tempPoint.X >= XRES)
 				throw GeneralException("Invalid position");
 
+	if (m->ShowingRoom())
+	{
+		Json::Value command;
+		command["op"] = "console"; command["cmd"] = "create"; command["element"] = type;
+		command["x1"] = tempPoint.X; command["y1"] = tempPoint.Y;
+		c->RoomConsole(command);
+		return NumberType(0);
+	}
 	int v = -1;
 	if (ID(type))
 	{
@@ -523,22 +559,34 @@ AnyType CommandInterface::tptS_delete(std::deque<String> * words)
 	AnyType partRef = eval(words);
 
 	Simulation * sim = m->GetSimulation();
-	if (m->ShowingRoom())
-		throw GeneralException("Changing the world from the console is not available in rooms yet");
+	Json::Value command;
+	command["op"] = "console"; command["cmd"] = "delete";
 
 	if(partRef.GetType() == TypePoint)
 	{
 		ui::Point deletePoint = ((PointType)partRef).Value();
 		if(deletePoint.X<0 || deletePoint.Y<0 || deletePoint.Y >= YRES || deletePoint.X >= XRES)
 			throw GeneralException("Invalid position");
-		sim->delete_part(deletePoint.X, deletePoint.Y);
+		if (m->ShowingRoom())
+		{
+			command["x1"] = deletePoint.X; command["y1"] = deletePoint.Y;
+			c->RoomConsole(command);
+		}
+		else
+			sim->delete_part(deletePoint.X, deletePoint.Y);
 	}
 	else if(partRef.GetType() == TypeNumber)
 	{
 		int partIndex = ((NumberType)partRef).Value();
 		if(partIndex < 0 || partIndex >= NPART)
 			throw GeneralException("Invalid particle index");
-		sim->kill_part(partIndex);
+		if (m->ShowingRoom())
+		{
+			command["index"] = partIndex;
+			c->RoomConsole(command);
+		}
+		else
+			sim->kill_part(partIndex);
 	}
 	else
 		throw GeneralException("Invalid particle reference");
@@ -571,7 +619,12 @@ AnyType CommandInterface::tptS_bubble(std::deque<String> * words)
 
 	Simulation * sim = m->GetSimulation();
 	if (m->ShowingRoom())
-		throw GeneralException("Changing the world from the console is not available in rooms yet");
+	{
+		Json::Value command;
+		command["op"] = "console"; command["cmd"] = "bubble"; command["x1"] = bubblePos.X; command["y1"] = bubblePos.Y;
+		c->RoomConsole(command);
+		return NumberType(0);
+	}
 
 	int first, rem1, rem2;
 
@@ -616,7 +669,13 @@ AnyType CommandInterface::tptS_reset(std::deque<String> * words)
 
 	Simulation * sim = m->GetSimulation();
 	if (m->ShowingRoom())
-		throw GeneralException("Changing the world from the console is not available in rooms yet");
+	{
+		// The room's own reset: admin only (the controller tells others why not).
+		if (resetStr != "pressure" && resetStr != "velocity" && resetStr != "sparks" && resetStr != "temp")
+			throw GeneralException("Unknown reset command");
+		c->RoomReset(resetStr == "temp" ? ByteString("temperature") : resetStr.ToUtf8());
+		return NumberType(0);
+	}
 
 	if (resetStr == "pressure")
 	{

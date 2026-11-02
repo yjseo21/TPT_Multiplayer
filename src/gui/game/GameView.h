@@ -44,8 +44,15 @@ struct RoomOverlay
 		bool wall; // in whole cells, like the wall brush
 		RGB colour;
 	};
+	struct Label
+	{
+		ui::Point position; // centre of the text's baseline
+		unsigned player;
+		String text;
+	};
 	std::vector<Cursor> cursors;
 	std::vector<Ghost> ghosts;
+	std::vector<Label> labels; // players' names over their stickmen
 };
 
 enum SelectMode

@@ -155,7 +155,7 @@ template<class A> void Field(A &a, playerst &p)
 {
     Field(a,p.comm); Field(a,p.pcomm); Field(a,p.elem);
     Field(a,p.legs); Field(a,p.accs); Field(a,p.spwn);
-    Field(a,p.frames); Field(a,p.rocketBoots); Field(a,p.fan); Field(a,p.spawnID);
+    Field(a,p.frames); Field(a,p.rocketBoots); Field(a,p.fan); Field(a,p.spawnID); Field(a,p.controller);
 }
 template<class A> void SignFields(A &a, std::vector<sign> &signs)
 {

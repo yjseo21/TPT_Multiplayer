@@ -6,6 +6,8 @@ namespace multiplayer
 {
 // A settings command, as every machine applies it.
 void ApplySettings(Simulation &sim, const SimulationSettingsChange &settings);
+// The stickman a room player steers (slot 1-4), if it exists.
+playerst *RoomStickman(Simulation &sim, int slot);
 class World
 {
 public:

@@ -1,4 +1,7 @@
 #include "Tools.h"
+#include "simulation/AccessProperty.h"
+#include <algorithm>
+#include <cstdlib>
 #include "simulation/SimulationData.h"
 #include "simulation/ElementClasses.h"
 #include "simulation/ToolClasses.h"
@@ -40,8 +43,78 @@ Json::Value ToolCatalog()
     for (auto &t : GetTools()) append(t.Identifier, t.Name.ToUtf8());
     return result;
 }
+namespace
+{
+// What PropertyTool does with a configuration (it needs the game's interface).
+void SetPropertyAt(Simulation &sim, const AccessProperty &change, ui::Point p)
+{
+    if (p.X < 0 || p.X >= XRES || p.Y < 0 || p.Y >= YRES) return;
+    int i = sim.pmap[p.Y][p.X];
+    if (!i) i = sim.photons[p.Y][p.X];
+    if (i) change.Set(&sim, ID(i));
+}
+void SetPropertyBrush(Simulation &sim, const AccessProperty &change, const Brush &brush, ui::Point at)
+{
+    for (ui::Point off : brush) SetPropertyAt(sim, change, at + off);
+}
+void SetPropertyLine(Simulation &sim, const AccessProperty &change, const Brush &brush, ui::Point a, ui::Point b)
+{
+    int x1 = a.X, y1 = a.Y, x2 = b.X, y2 = b.Y, x, y, sy, rx = brush.GetRadius().X, ry = brush.GetRadius().Y;
+    bool reverseXY = std::abs(y2-y1) > std::abs(x2-x1);
+    float e = 0.0f, de;
+    if (reverseXY) { std::swap(x1, y1); std::swap(x2, y2); }
+    if (x1 > x2) { std::swap(x1, x2); std::swap(y1, y2); }
+    int dx = x2 - x1, dy = std::abs(y2 - y1);
+    de = dx ? dy/(float)dx : 0.0f;
+    y = y1;
+    sy = (y1<y2) ? 1 : -1;
+    auto draw = [&](int px, int py) { SetPropertyBrush(sim, change, brush, reverseXY ? ui::Point(py, px) : ui::Point(px, py)); };
+    for (x = x1; x <= x2; x++)
+    {
+        draw(x, y);
+        e += de;
+        if (e >= 0.5f)
+        {
+            y += sy;
+            if (!(rx+ry) && ((y1<y2) ? (y<=y2) : (y>=y2))) draw(x, y);
+            e -= 1.0f;
+        }
+    }
+}
+}
+bool RoomOnlyTool(const std::string &identifier)
+{
+    return DecorationMode(identifier) >= 0 || identifier == "DEFAULT_UI_PROPERTY";
+}
 void ApplyTool(Simulation &sim, const Command &c)
 {
+    if (RoomOnlyTool(c.tool))
+    {
+        std::unique_ptr<Brush> brush;
+        if (c.brush == "rectangle") brush = std::make_unique<RectangleBrush>();
+        else if (c.brush == "triangle") brush = std::make_unique<TriangleBrush>();
+        else brush = std::make_unique<EllipseBrush>(c.brush == "ellipse-perfect");
+        brush->SetRadius({c.radius, c.radiusY});
+        ui::Point a{c.x1, c.y1}, b{c.x2, c.y2};
+        if (auto mode = DecorationMode(c.tool); mode >= 0)
+        {
+            // What DecorationTool does, with the colour the command carries.
+            auto colour = RGBA::Unpack(c.decoColour);
+            if (c.action == "point") sim.ApplyDecorationPoint(a.X, a.Y, colour.Red, colour.Green, colour.Blue, colour.Alpha, mode, *brush);
+            else if (c.action == "line") sim.ApplyDecorationLine(a.X, a.Y, b.X, b.Y, colour.Red, colour.Green, colour.Blue, colour.Alpha, mode, *brush);
+            else if (c.action == "box") sim.ApplyDecorationBox(a.X, a.Y, b.X, b.Y, colour.Red, colour.Green, colour.Blue, colour.Alpha, mode);
+            return;
+        }
+        AccessProperty change{ c.property, c.value };
+        if (c.action == "point") SetPropertyBrush(sim, change, *brush, a);
+        else if (c.action == "line") SetPropertyLine(sim, change, *brush, a, b);
+        else if (c.action == "box")
+            for (int y = std::min(a.Y, b.Y); y <= std::max(a.Y, b.Y); y++)
+                for (int x = std::min(a.X, b.X); x <= std::max(a.X, b.X); x++)
+                    SetPropertyAt(sim, change, {x, y});
+        else if (c.action == "fill") sim.flood_prop(a.X, a.Y, change);
+        return;
+    }
     auto tool = FindTool(c.tool);
     std::unique_ptr<Brush> brush;
     if (c.brush == "rectangle") brush = std::make_unique<RectangleBrush>();

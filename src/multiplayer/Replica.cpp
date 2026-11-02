@@ -143,7 +143,7 @@ int main(int argc,char **argv)
             for (auto &msg : incoming)
             {
                 if (msg.binary) replica.OnBinary(msg.value);
-                else replica.OnJson(ParseJson(msg.value));
+                else replica.OnJson(ParseJson(msg.value, MaxOrderedBytes));
             }
         }
         if (!replica.Ready()) throw std::runtime_error("checkpoint bootstrap did not complete");

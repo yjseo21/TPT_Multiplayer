@@ -48,6 +48,7 @@ public:
     // False when the world is not synchronized or the connection is saturated.
     bool Send(Json::Value command);
     bool SendControl(const Json::Value &value);
+    size_t Buffered() const; // bytes queued on the connection, not yet sent
     // Rate-limited (10/s, plus a 1 s refresh), and only sent when it changed.
     void SendCursor(bool visible, int x, int y, int radius, bool drawing);
     // Video: asks the server for that view. Local simulation: views are local.
@@ -62,6 +63,7 @@ public:
     bool PresenceEnabled() const { return presenceEnabled; }
     bool ToolActionsSupported() const { return toolActionsSupported; }
     unsigned OwnPlayer() const { return ownPlayer; }
+    int OwnStickman() const { return ownStickman; } // 1-4, 0 if none
     unsigned Connections() const { return connections; }
     int View() const { return desiredView; }
     // Players from the latest presence broadcast; empty once it is 2 s old.
@@ -103,6 +105,7 @@ private:
 
     bool ready = false, admin = false, roomLocked = false, presenceEnabled = false, toolActionsSupported = false;
     unsigned ownPlayer = 0, connections = 0, failures = 0;
+    int ownStickman = 0;
     int desiredView = 0;
     bool attempting = true;
     double retryAt = 0, lastReceived, presenceAt = -10;
@@ -124,8 +127,8 @@ private:
     bool pausedSinceSeal = false;
     std::deque<std::pair<double, double>> sealGaps; // (time, seconds since the previous advance)
     uint64_t Lead() const;
-    // A computer that cannot keep up: behind the room by over a second for a
-    // while ("TOO SLOW"); far behind, it jumps to the room's present.
+    // A computer that cannot keep up: unable to catch up with the room for 3 s
+    // ("TOO SLOW"); after 10 s, it jumps to the room's present.
     double behindSince = 0, lastSkipAhead = -100, behindSeconds = 0;
     uint64_t skipAheads = 0;
 

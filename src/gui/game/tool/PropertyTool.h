@@ -22,6 +22,7 @@ private:
 	std::optional<Configuration> configuration;
 
 	friend class PropertyWindow;
+	friend class GameController; // multiplayer test automation configures it as the window would
 
 public:
 	PropertyTool(GameModel &newGameModel):

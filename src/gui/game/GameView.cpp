@@ -2270,6 +2270,12 @@ void GameView::DrawRoomOverlay(Graphics *g)
 			ghostBrushes.clear();
 	}
 	static const RGB cursorColours[] = { 0xFF7070_rgb, 0x70C8FF_rgb, 0x80FF80_rgb, 0xFFD050_rgb };
+	for (auto &label : roomOverlay.labels)
+	{
+		auto width = Graphics::TextSize(label.text).X;
+		auto at = Vec2{ std::clamp(label.position.X - width / 2, 1, XRES - width - 1), std::clamp(label.position.Y - 10, 1, YRES - 11) };
+		g->BlendText(at, label.text, cursorColours[label.player % 4].WithAlpha(230));
+	}
 	for (auto &cursor : roomOverlay.cursors)
 	{
 		auto colour = cursorColours[cursor.player % 4];

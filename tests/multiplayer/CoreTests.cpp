@@ -162,7 +162,8 @@ int main()
                 Check(StrokeCommands(stroke).size() == 1, "an ordinary stroke stays one command");
                 Check(RoomSupportsTool("DEFAULT_PT_WATR") && RoomSupportsTool("DEFAULT_WL_FAN") && RoomSupportsTool("DEFAULT_TOOL_HEAT"),
                     "element, wall and simulation tools are available in rooms");
-                Check(!RoomSupportsTool("DEFAULT_UI_SIGN") && !RoomSupportsTool("DEFAULT_UI_PROPERTY"), "interface tools are not (yet)");
+                Check(RoomSupportsTool("DEFAULT_UI_PROPERTY") && RoomSupportsTool("DEFAULT_DECOR_SMDG") && !RoomSupportsTool("DEFAULT_UI_SIGN"),
+                    "property and decoration tools are strokes in rooms; signs have their own command");
             }
         }
         World w;
@@ -357,6 +358,113 @@ int main()
             Reject([&] { w.Load("newtonian-test.cps"); });
             Check(w.resetGeneration == before && w.sim->gravityMode == GRAV_CUSTOM, "a refused save leaves the room's world alone");
             Platform::RemoveFile("newtonian-test.cps");
+        }
+        {
+            // Room stickmen: one per player slot; slots 3-4 are fighters steered like stickmen.
+            World w;
+            for (int y = 300; y < 320; ++y) for (int x = CELL; x < XRES-CELL; ++x) w.sim->create_part(-1, x, y, PT_DMND); // a floor
+            auto spawn = ParseJson(R"({"seq":1,"op":"stickman_spawn","x1":100,"y1":250})");
+            Check(ParseCommand(spawn, false).slot == 0, "players never pick a stickman slot themselves");
+            for (int slot = 1; slot <= 4; ++slot)
+            {
+                spawn["slot"] = slot; spawn["x1"] = 100*slot;
+                w.Apply(ParseCommand(spawn, false));
+            }
+            Check(w.sim->player.spwn && w.sim->player2.spwn && w.sim->fighcount == 2, "four stickmen for four players");
+            int fighter3 = -1;
+            for (int i = 0; i < MAX_FIGHTERS; ++i) if (w.sim->fighters[i].spwn && w.sim->fighters[i].controller == 3) fighter3 = i;
+            Check(fighter3 >= 0, "slot 3 is a player-controlled fighter");
+            spawn["slot"] = 1; spawn["x1"] = 150;
+            w.Apply(ParseCommand(spawn, false));
+            Check(w.sim->elementCount[PT_STKM] == 1, "placing your stickman again moves it, never duplicates it");
+            for (int t = 0; t < 60; ++t) w.Advance(); // land on the floor
+            auto steer = ParseJson(R"({"seq":2,"op":"stickman","slot":3,"comm":2,"pcomm":0})");
+            auto before = w.sim->fighters[fighter3].legs[0];
+            w.Apply(ParseCommand(steer, false));
+            for (int t = 0; t < 60; ++t) w.Advance();
+            if (!(w.sim->fighters[fighter3].comm == 2 && w.sim->fighters[fighter3].legs[0] > before + 5))
+                throw std::runtime_error("a controlled fighter follows its player's keys, not its AI: comm=" +
+                    std::to_string(int(w.sim->fighters[fighter3].comm)) + " x " + std::to_string(before) + " -> " +
+                    std::to_string(w.sim->fighters[fighter3].legs[0]) + " spwn=" + std::to_string(int(w.sim->fighters[fighter3].spwn)) +
+                    " y=" + std::to_string(w.sim->fighters[fighter3].legs[1]));
+            auto record = ParseCommand(ParseJson(JsonText(RecordCommand(ParseCommand(steer, false)))), false);
+            Check(record.kind == Command::Stickman && record.slot == 3 && record.comm == 2, "stickman commands are recorded with their slot");
+            Reject([&] { auto bad = steer; bad["comm"] = 16; ParseCommand(bad, false); });
+            // Resets are admin room commands.
+            auto reset = ParseJson(R"({"seq":3,"op":"reset","what":"air"})");
+            Reject([&] { ParseCommand(reset, false); });
+            w.sim->pv[10][10] = 5;
+            w.Apply(ParseCommand(reset, true));
+            Check(w.sim->pv[10][10] == 0, "resetting air clears pressure");
+            reset["what"] = "nonsense";
+            Reject([&] { ParseCommand(reset, true); });
+            // Console commands (admin): resolved values and selectors, exactly recorded.
+            auto console = [&](const char *text) { return ParseCommand(ParseJson(text), true); };
+            Reject([&] { ParseCommand(ParseJson(R"({"seq":4,"op":"console","cmd":"bubble","x1":200,"y1":100})"), false); });
+            w.Apply(console(R"({"seq":4,"op":"console","cmd":"bubble","x1":200,"y1":100})"));
+            Check(w.sim->elementCount[PT_SOAP] == 31, "the console's bubble is a ring of 31 SOAP");
+            w.Apply(console((R"({"seq":5,"op":"console","cmd":"create","element":)" + std::to_string(PT_METL) + R"(,"x1":50,"y1":50})").c_str()));
+            Check(w.sim->pmap[50][50] && TYP(w.sim->pmap[50][50]) == PT_METL, "the console creates a particle");
+            int tempProperty = 0;
+            while (Particle::GetProperties()[tempProperty].Name != "temp") ++tempProperty;
+            auto set = console((R"({"seq":6,"op":"console","cmd":"set","property":)" + std::to_string(tempProperty) +
+                R"(,"value":1234.5,"selector":"type","element":)" + std::to_string(PT_METL) + "}").c_str());
+            w.Apply(set);
+            Check(w.sim->parts[ID(w.sim->pmap[50][50])].temp == 1234.5f, "set changes the selected particles");
+            Check(ParseCommand(ParseJson(JsonText(RecordCommand(set))), true).value == set.value, "set values are recorded exactly");
+            w.Apply(console(R"({"seq":7,"op":"console","cmd":"delete","x1":50,"y1":50})"));
+            Check(!w.sim->pmap[50][50], "the console deletes a particle");
+            // Decoration and property tools carry their colour and value; deco fill is refused.
+            auto deco = ParseJson(R"({"seq":9,"op":"tool","tool":"DEFAULT_DECOR_SET","action":"point","x1":100,"y1":100,"radius":1,"colour":4278255360})");
+            w.Apply(console((R"({"seq":9,"op":"console","cmd":"create","element":)" + std::to_string(PT_METL) + R"(,"x1":100,"y1":100})").c_str()));
+            w.Apply(ParseCommand(deco, false));
+            Check(w.sim->parts[ID(w.sim->pmap[100][100])].dcolour == 4278255360u, "decoration tools paint with their colour");
+            Check(ParseCommand(ParseJson(JsonText(RecordCommand(ParseCommand(deco, false)))), false).decoColour == 4278255360u, "colours are recorded");
+            deco["action"] = "fill";
+            Reject([&] { ParseCommand(deco, false); });
+            auto prop = ParseJson(R"({"seq":10,"op":"tool","tool":"DEFAULT_UI_PROPERTY","action":"point","x1":100,"y1":100,"radius":0,"property":1,"value":42})");
+            w.Apply(ParseCommand(prop, false));
+            Check(w.sim->parts[ID(w.sim->pmap[100][100])].life == 42, "the property tool sets its property");
+            // Signs: anyone adds, edits or removes; an edit applies only where its editor saw the sign.
+            w.Apply(ParseCommand(ParseJson(R"({"seq":11,"op":"sign","index":-1,"text":"{b|go}","x1":150,"y1":150,"justification":1})"), false));
+            Check(w.sim->signs.size() == 1 && w.sim->signs[0].text == "{b|go}", "a sign is added");
+            w.Apply(ParseCommand(ParseJson(R"({"seq":12,"op":"sign","index":0,"x2":1,"y2":1,"text":"lost","x1":5,"y1":5,"justification":1})"), false));
+            Check(w.sim->signs[0].text == "{b|go}", "a stale sign edit does nothing");
+            w.sim->create_part(-1, 150, 150, PT_METL); // a button sparks the conductor under it
+            w.Apply(ParseCommand(ParseJson(R"({"seq":13,"op":"sign_button","index":0,"x1":150,"y1":150})"), false));
+            Check(w.sim->pmap[150][150] && TYP(w.sim->pmap[150][150]) == PT_SPRK, "a button sign sparks");
+            w.Apply(ParseCommand(ParseJson(R"({"seq":14,"op":"sign","index":0,"x2":150,"y2":150,"remove":true})"), false));
+            Check(w.sim->signs.empty(), "a sign is removed");
+            Reject([&] { ParseCommand(ParseJson(R"({"seq":15,"op":"sign","index":-1,"text":"","x1":1,"y1":1,"justification":1})"), false); });
+            // Paste: a save file, placed as the game places it; checked and recorded exactly.
+            {
+                World source;
+                for (int x = 20; x < 40; ++x) source.sim->create_part(-1, x, 20, PT_GOLD);
+                auto [missing, data] = source.sim->Save(true, RectBetween(Vec2{ 10, 10 }, Vec2{ 50, 30 }))->Serialise();
+                Check(!missing, "a region becomes a save file");
+                Json::Value paste; paste["seq"] = 16; paste["op"] = "paste"; paste["x1"] = 50; paste["y1"] = 50; // cells
+                paste["save"] = Base64Encode(std::string_view(data.data(), data.size()));
+                auto before = w.sim->elementCount[PT_GOLD];
+                auto parsed = ParseCommand(paste, false);
+                w.Apply(parsed);
+                int gold = 0;
+                for (int i = 0; i < NPART; ++i) gold += w.sim->parts[i].type == PT_GOLD;
+                Check(gold == before + 20, "pasting places the save's particles");
+                Check(ParseCommand(ParseJson(JsonText(RecordCommand(parsed)), MaxOrderedBytes), false).text == parsed.text, "pastes are recorded exactly");
+                std::string bytes{ 'a', 'b', char(0xFF), char(0), 'c' };
+                for (size_t n = 0; n <= bytes.size(); ++n)
+                    Check(Base64Decode(Base64Encode(bytes.substr(0, n))) == bytes.substr(0, n), "base64 round-trips bytes");
+                paste["save"] = "not base64!";
+                Reject([&] { ParseCommand(paste, false); });
+                paste["save"] = std::string((MaxPasteBytes+2)/3*4 + 4, 'A');
+                Reject([&] { ParseCommand(paste, false); });
+            }
+            for (auto bad : { R"({"seq":8,"op":"console","cmd":"set","property":0,"value":9999,"selector":"all"})",
+                              R"({"seq":8,"op":"console","cmd":"set","property":1,"value":1.5,"selector":"all"})",
+                              R"({"seq":8,"op":"console","cmd":"set","property":1,"value":1,"selector":"some"})",
+                              R"({"seq":8,"op":"console","cmd":"create","element":0,"x1":1,"y1":1})",
+                              R"({"seq":8,"op":"console","cmd":"format","x1":1,"y1":1})" })
+                Reject([&] { console(bad); });
         }
         EditSession edits;
         Check(edits.Begin() == 1 && edits.Begin() == 2, "editing sequences increase per connection");

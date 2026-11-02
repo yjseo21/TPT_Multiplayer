@@ -7,11 +7,126 @@
 #include "common/platform/Platform.h"
 #include "gui/game/EllipseBrush.h"
 #include "simulation/Air.h"
+#include "simulation/AccessProperty.h"
+#include "simulation/Sign.h"
+#include "simulation/ElementClasses.h"
+#include "simulation/SimulationData.h"
+#include <cstring>
 #include <stdexcept>
 
 namespace multiplayer
 {
 World::World() : sim(Simulation::Factory()) {}
+// Room stickmen: slot 1 is STKM, slot 2 STKM2, slots 3 and 4 are fighters
+// steered by their player instead of their AI.
+playerst *RoomStickman(Simulation &sim, int slot)
+{
+    if (slot == 1) return sim.player.spwn ? &sim.player : nullptr;
+    if (slot == 2) return sim.player2.spwn ? &sim.player2 : nullptr;
+    for (auto &fighter : sim.fighters) if (fighter.spwn && fighter.controller == slot) return &fighter;
+    return nullptr;
+}
+namespace
+{
+void SpawnRoomStickman(Simulation &sim, int slot, int x, int y)
+{
+    // One stickman per player: placing it again moves it (the old one dies).
+    for (int i = 0; i < NPART; ++i)
+    {
+        auto &p = sim.parts[i];
+        if ((slot == 1 && p.type == PT_STKM) || (slot == 2 && p.type == PT_STKM2) ||
+            (slot > 2 && p.type == PT_FIGH && p.tmp >= 0 && p.tmp < MAX_FIGHTERS && sim.fighters[p.tmp].controller == slot))
+            sim.kill_part(i);
+    }
+    auto i = sim.create_part(-1, x, y, slot == 1 ? PT_STKM : slot == 2 ? PT_STKM2 : PT_FIGH);
+    if (i >= 0 && slot > 2 && sim.parts[i].type == PT_FIGH && sim.parts[i].tmp >= 0 && sim.parts[i].tmp < MAX_FIGHTERS)
+        sim.fighters[sim.parts[i].tmp].controller = slot;
+}
+// The console's set / create / delete / bubble, as the game's console performs them.
+void ApplyConsole(Simulation &sim, const Command &c)
+{
+    if (c.cmd == "set")
+    {
+        AccessProperty change{ c.property, c.value };
+        auto at = [&](int i) { if (i >= 0 && i < NPART && sim.parts[i].type) change.Set(&sim, i); };
+        if (c.selector == "index") at(c.index);
+        else if (c.selector == "point")
+        {
+            auto r = sim.pmap[c.y1][c.x1];
+            if (!r) r = sim.photons[c.y1][c.x1];
+            if (r) at(ID(r));
+        }
+        else
+            for (int i = 0; i < NPART; ++i)
+                if (sim.parts[i].type && (c.selector == "all" || sim.parts[i].type == c.element)) change.Set(&sim, i);
+    }
+    else if (c.cmd == "create") sim.create_part(-1, c.x1, c.y1, TYP(c.element), ID(c.element));
+    else if (c.cmd == "delete")
+    {
+        if (c.index >= 0) sim.kill_part(c.index);
+        else sim.delete_part(c.x1, c.y1);
+    }
+    else if (c.cmd == "bubble")
+    {
+        // The console's ring of 31 SOAP particles. Its offsets are a fixed table
+        // (18 cos and sin of i/5, rounded as the console does): math library results
+        // differ slightly between platforms, and every machine must place the same parts.
+        static constexpr int ring[30][2] = { {18,4},{17,7},{15,10},{13,13},{10,15},{7,17},{3,18},{-1,18},{-4,18},{-7,16},
+            {-11,15},{-13,12},{-15,9},{-17,6},{-18,3},{-18,-1},{-17,-5},{-16,-8},{-14,-11},{-12,-14},
+            {-9,-16},{-6,-17},{-2,-18},{2,-18},{5,-17},{8,-16},{11,-14},{14,-11},{16,-8},{17,-5} };
+        int first = sim.create_part(-1, c.x1+18, c.y1, PT_SOAP), rem1 = first, rem2;
+        for (auto [dx, dy] : ring)
+        {
+            rem2 = sim.create_part(-1, c.x1+dx, c.y1+dy, PT_SOAP);
+            if (rem1 >= 0) { sim.parts[rem1].ctype = 7; sim.parts[rem1].tmp = rem2; }
+            if (rem2 >= 0) sim.parts[rem2].tmp2 = rem1;
+            rem1 = rem2;
+        }
+        if (rem1 >= 0) { sim.parts[rem1].ctype = 7; sim.parts[rem1].tmp = first; }
+        if (first >= 0) { sim.parts[first].tmp2 = rem1; sim.parts[first].ctype = 7; }
+    }
+}
+// The game's reset and invert actions, as its controller performs them.
+void ApplyReset(Simulation &sim, const std::string &what)
+{
+    auto &sd = SimulationData::CRef();
+    if (what == "air")
+    {
+        sim.air->Clear();
+        for (int i = 0; i < NPART; i++)
+            if (GameSave::PressureInTmp3(sim.parts[i].type)) sim.parts[i].tmp3 = 0;
+    }
+    else if (what == "pressure")
+    {
+        for (int y = 0; y < YCELLS; y++) for (int x = 0; x < XCELLS; x++) sim.pv[y][x] = 0;
+    }
+    else if (what == "velocity")
+    {
+        for (int y = 0; y < YCELLS; y++) for (int x = 0; x < XCELLS; x++) sim.vx[y][x] = sim.vy[y][x] = 0;
+    }
+    else if (what == "sparks")
+    {
+        for (int i = 0; i < NPART; i++)
+        {
+            auto &p = sim.parts[i];
+            if (p.type == PT_SPRK)
+            {
+                if (p.ctype >= 0 && p.ctype < PT_NUM && sd.elements[p.ctype].Enabled) { p.type = p.ctype; p.ctype = p.life = 0; }
+                else sim.kill_part(i);
+            }
+            else if (p.type == PT_WIRE) p.ctype = p.tmp = 0;
+        }
+        std::memset(sim.wireless, 0, sizeof(sim.wireless));
+    }
+    else if (what == "ambientHeat") sim.air->ClearAirH();
+    else if (what == "temperature")
+    {
+        for (int i = 0; i < NPART; i++)
+            if (sim.parts[i].type) sim.parts[i].temp = sd.elements[sim.parts[i].type].DefaultProperties.temp;
+    }
+    else if (what == "invertAir") sim.air->Invert();
+}
+}
 void ApplySettings(Simulation &sim, const SimulationSettingsChange &s)
 {
     // Newtonian gravity runs on a worker thread whose timing differs between
@@ -58,6 +173,41 @@ void World::Apply(const Command &c)
         Advance(); break;
     case Command::Clear: sim->clear_sim(); ++resetGeneration; break;
     case Command::Settings: ApplySettings(*sim, c.settings); break;
+    case Command::Reset: ApplyReset(*sim, c.what); break;
+    case Command::Console: ApplyConsole(*sim, c); break;
+    case Command::Sign:
+        // Edits apply only if the sign is still where its editor saw it.
+        if (c.index < 0)
+        {
+            if (sim->signs.size() < MAXSIGNS)
+                sim->signs.push_back(sign(ByteString(c.text).FromUtf8(), c.x1, c.y1, sign::Justification(c.justification)));
+        }
+        else if (c.index < int(sim->signs.size()) && sim->signs[c.index].x == c.x2 && sim->signs[c.index].y == c.y2)
+        {
+            if (c.remove) sim->signs.erase(sim->signs.begin() + c.index);
+            else sim->signs[c.index] = sign(ByteString(c.text).FromUtf8(), c.x1, c.y1, sign::Justification(c.justification));
+        }
+        break;
+    case Command::Paste:
+    {
+        // As GameController::PlaceSave does, without its local history or pausing.
+        auto bytes = Base64Decode(c.text);
+        GameSave save(std::vector<char>(bytes.begin(), bytes.end()), false);
+        sim->Load(&save, c.includePressure, {c.x1, c.y1});
+        break;
+    }
+    case Command::SignButton:
+        if (c.index < int(sim->signs.size()) && sim->signs[c.index].x == c.x1 && sim->signs[c.index].y == c.y1 &&
+            sim->signs[c.index].split().second == sign::Type::Button)
+            sim->create_part(-1, c.x1, c.y1, PT_SPRK);
+        break;
+    case Command::Stickman:
+        if (auto *stickman = RoomStickman(*sim, c.slot)) { stickman->comm = char(c.comm); stickman->pcomm = char(c.pcomm); }
+        break;
+    case Command::StickmanSpawn:
+        if (c.slot < 1 || c.slot > 4) throw std::runtime_error("no stickman slot");
+        SpawnRoomStickman(*sim, c.slot, c.x1, c.y1);
+        break;
     }
     ++revision;
     // Map/free-list maintenance without advancing physics, including while paused.

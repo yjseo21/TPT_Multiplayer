@@ -26,7 +26,7 @@ namespace
 {
 // Local physics per frame while catching up, so a frame stays responsive.
 constexpr double CatchUpBudget = .012;
-// This far behind, a computer that cannot keep up jumps to the room's present;
+// Unable to catch up for this long, a computer jumps to the room's present;
 // at most this often, so a merely busy moment never causes repeated rejoins.
 constexpr double SkipAheadSeconds = 10, SkipAheadInterval = 30;
 }
@@ -93,7 +93,7 @@ Session::Session(SessionOptions o) :
                 {
                     // Bounded: one 64 MiB checkpoint in 32 KiB chunks plus queued seals.
                     if ((msg->binary && msg->str.size() > CheckpointWireHeaderBytes+CheckpointChunkBytes) ||
-                        (!msg->binary && msg->str.size() > 256*1024) || box->ordered.size() >= 4096)
+                        (!msg->binary && msg->str.size() > MaxOrderedBytes) || box->ordered.size() >= 4096)
                         throw std::runtime_error("local simulation receive limit exceeded");
                     box->ordered.push_back({msg->binary, msg->str, MonotonicSeconds()});
                 }
@@ -145,6 +145,10 @@ void Session::Fail(const std::string &reason)
 bool Session::Disconnected() const
 {
     std::lock_guard lock(mailbox->mutex); return mailbox->disconnected;
+}
+size_t Session::Buffered() const
+{
+    return socket ? socket->bufferedAmount() : 0;
 }
 bool Session::SendControl(const Json::Value &value)
 {
@@ -240,6 +244,7 @@ void Session::HandleControl(const Json::Value &v, double receivedAt)
             throw std::runtime_error("server build mismatch");
         ready = true; admin = v["admin"].asBool(); roomLocked = v["roomLocked"].asBool();
         ownPlayer = v["player"].asUInt(); presenceEnabled = v["presence"].asBool();
+        ownStickman = v.isMember("stickman") ? Integer(v, "stickman", 0, 4) : 0;
         toolActionsSupported = v["toolActions"].asBool();
         if (options.localSim && !(v["localSimulation"].isBool() && v["localSimulation"].asBool()))
             throw std::runtime_error("server does not support local simulation");
@@ -301,7 +306,7 @@ void Session::HandleOrdered(bool binary, const std::string &bytes, double receiv
     if (desyncWaitUntil)
     {
         // The diverged world is already discarded; only wait for the server's comparison.
-        if (!binary) HandleControl(ParseJson(bytes), received);
+        if (!binary) HandleControl(ParseJson(bytes, MaxOrderedBytes), received);
         return;
     }
     if (binary)
@@ -310,7 +315,7 @@ void Session::HandleOrdered(bool binary, const std::string &bytes, double receiv
         replica->OnBinary(bytes);
         return;
     }
-    auto v = ParseJson(bytes);
+    auto v = ParseJson(bytes, MaxOrderedBytes);
     auto type = v["type"].asString();
     HandleControl(v, received);
     if (type == "welcome")
@@ -394,15 +399,18 @@ void Session::Pump()
         }
         tickCredit = std::max(tickCredit-double(ran), -1.0);
         if (ran == backlog) tickCredit = std::min(tickCredit, 1.0);
-        behindSeconds = replica->Backlog()/tickRate;
-        if (behindSeconds < 1) behindSince = 0;
+        // Behind: more than half a second of ticks past the margin. What counts is
+        // how long it has been unable to catch up; rates measured across pauses
+        // and frame steps say nothing about this computer's speed.
+        if (replica->Backlog() <= lead + 30) behindSince = 0;
         else if (!behindSince) behindSince = now;
+        behindSeconds = behindSince ? now-behindSince : 0;
         if (behindSeconds > SkipAheadSeconds && now-lastSkipAhead > SkipAheadInterval)
         {
             // Rejoin from a fresh snapshot of the room's present. Cheap for the
             // room: only a raw copy happens on its thread.
             lastSkipAhead = now; ++skipAheads;
-            std::cerr << "This computer is " << int(behindSeconds) << " s behind the room; jumping ahead" << std::endl;
+            std::cerr << "This computer has been behind the room for " << int(behindSeconds) << " s; jumping ahead" << std::endl;
             RetireReplica(); canvas.id = 0;
             Fail("this computer cannot keep up with the room; jumping to its present");
             return;
@@ -503,7 +511,7 @@ void Session::AddLocalStatus(Json::Value &out) const
         {
             bool slow = !out["simHz"].isNull() && !replica->world.paused &&
                 out["simHz"].asDouble() < out["targetHz"].asDouble()*.85;
-            bool tooSlow = behindSince && MonotonicSeconds()-behindSince > 3;
+            bool tooSlow = behindSeconds > 3;
             out["status"] = replica->world.paused ? "PAUSED" : tooSlow ? "TOO SLOW" : (slow ? "SERVER SLOW" : "LOCAL SIM");
             out["behindSeconds"] = behindSeconds;
             out["paused"] = replica->world.paused;

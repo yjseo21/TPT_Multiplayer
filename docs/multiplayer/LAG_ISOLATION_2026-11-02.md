@@ -66,11 +66,13 @@ Now (`Session::Pump`):
 - **Catch-up has a time budget of 12 ms of physics per frame**, with at least
   one tick when one is due. The game stays responsive and falls behind visibly
   instead of freezing.
-- **"TOO SLOW" status.** If the local world has been more than 1 s behind the
-  room for 3 s, the status becomes `TOO SLOW`. The game's status line shows
+- **"TOO SLOW" status.** If the client has been unable to catch up for 3 s
+  (more than half a second of ticks beyond its margin), the status becomes
+  `TOO SLOW`. This replaced a backlog divided by a measured rate, which a
+  paused frame step could inflate; see `ROOM_COMPLETE_2026-11-02.md`. The game's status line shows
   "TOO SLOW FOR THIS ROOM (N s behind)". `behindSeconds` and `skipAheads` are
   in the metrics.
-- **Jump ahead.** At 10 s behind, the client discards its local world and
+- **Jump ahead.** After 10 s unable to catch up, the client discards its local world and
   rejoins from a fresh snapshot of the room's present, at most once every
   30 s. Thanks to the first fix this costs the room a copy of a few
   milliseconds. It is not a divergence, so `resyncs` stays 0. Unconfirmed edits

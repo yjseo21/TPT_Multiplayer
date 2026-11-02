@@ -10,6 +10,7 @@ namespace multiplayer
 {
 bool RoomSupportsTool(const std::string &identifier)
 {
+    if (RoomOnlyTool(identifier)) return true;
     try { FindTool(identifier); return true; }
     catch (const std::exception &) { return false; }
 }
@@ -26,6 +27,12 @@ std::vector<Json::Value> StrokeCommands(const ToolStroke &s)
         c["strength"] = std::clamp(int(std::lround(s.strength*100)), 1, 1000);
         c["dragging"] = s.dragging; c["shift"] = s.shift; c["ctrl"] = s.ctrl; c["alt"] = s.alt;
         c["flags"] = std::clamp(s.replaceFlags, 0, 3); c["replace"] = std::clamp(s.replaceSelected, 0, PT_NUM-1);
+        if (DecorationMode(s.tool) >= 0) c["colour"] = s.decoColour;
+        else if (s.tool == "DEFAULT_UI_PROPERTY")
+        {
+            c["property"] = s.property;
+            std::visit([&](auto value) { c["value"] = value; }, s.value);
+        }
         return c;
     };
     std::vector<Json::Value> out;

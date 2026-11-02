@@ -134,6 +134,7 @@ public:
 	EventTraits eventTraits = eventTraitNone;
 
 	bool luacon_hasLastError = false;
+	bool roomLuaNoticeShown = false; // multiplayer: told once that Lua acts on the own canvas
 	String lastCode;
 
 	int textInputRefcount = 0;

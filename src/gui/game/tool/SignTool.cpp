@@ -20,6 +20,9 @@ public:
 	Simulation * sim;
 	int signID;
 	ui::Point signPosition;
+	// In a room (tool->roomChange set): the sign being edited, a copy.
+	std::optional<sign> original, edited;
+	bool InRoom() const { return bool(tool->roomChange); }
 	SignWindow(SignTool * tool_, Simulation * sim_, int signID_, ui::Point position_);
 	void OnDraw() override;
 	void DoDraw() override;
@@ -70,6 +73,13 @@ SignWindow::SignWindow(SignTool * tool_, Simulation * sim_, int signID_, ui::Poi
 	okayButton->Appearance.BorderInactive = (ui::Colour(200, 200, 200));
 	okayButton->SetActionCallback({ [this] {
 		CloseActiveWindow();
+		if (InRoom())
+		{
+			if (textField->GetText().length())
+				tool->roomChange(signID, original, sign(textField->GetText(), signPosition.X, signPosition.Y, (sign::Justification)justification->GetOption().second));
+			SelfDestruct();
+			return;
+		}
 		if(signID==-1 && textField->GetText().length())
 		{
 			sim->signs.push_back(sign(textField->GetText(), signPosition.X, signPosition.Y, (sign::Justification)justification->GetOption().second));
@@ -102,7 +112,12 @@ SignWindow::SignWindow(SignTool * tool_, Simulation * sim_, int signID_, ui::Poi
 	textField->Appearance.VerticalAlign = ui::Appearance::AlignMiddle;
 	textField->SetLimit(45);
 	textField->SetActionCallback({ [this] {
-		if (signID!=-1)
+		if (signID!=-1 && InRoom())
+		{
+			edited->text = textField->GetText();
+			edited->ju = (sign::Justification)justification->GetOption().second;
+		}
+		else if (signID!=-1)
 		{
 			sim->signs[signID].text = textField->GetText();
 			sim->signs[signID].ju = (sign::Justification)justification->GetOption().second;
@@ -111,6 +126,8 @@ SignWindow::SignWindow(SignTool * tool_, Simulation * sim_, int signID_, ui::Poi
 	AddComponent(textField);
 	FocusComponent(textField);
 
+	if (signID!=-1 && InRoom())
+		original = edited = sim->signs[signID];
 	if(signID!=-1)
 	{
 		messageLabel->SetText("Edit sign");
@@ -121,7 +138,13 @@ SignWindow::SignWindow(SignTool * tool_, Simulation * sim_, int signID_, ui::Poi
 		ui::Point position = ui::Point(justification->Position.X+justification->Size.X+3, 48);
 		ui::Button * moveButton = new ui::Button(position, ui::Point(((Size.X-position.X-8)/2)-2, 16), "Move");
 		moveButton->SetActionCallback({ [this] {
-			if (signID!=-1)
+			if (signID!=-1 && InRoom())
+			{
+				movingSign = &*edited;
+				edited->ju = (sign::Justification)justification->GetOption().second;
+				signMoving = true;
+			}
+			else if (signID!=-1)
 			{
 				movingSign = &sim->signs[signID];
 				sim->signs[signID].ju = (sign::Justification)justification->GetOption().second;
@@ -135,7 +158,9 @@ SignWindow::SignWindow(SignTool * tool_, Simulation * sim_, int signID_, ui::Poi
 		//deleteButton->SetIcon(IconDelete);
 		deleteButton->SetActionCallback({ [this] {
 			CloseActiveWindow();
-			if (signID!=-1)
+			if (signID!=-1 && InRoom())
+				tool->roomChange(signID, original, std::nullopt);
+			else if (signID!=-1)
 			{
 				sim->signs.erase(sim->signs.begin() + signID);
 			}
@@ -153,13 +178,20 @@ SignWindow::SignWindow(SignTool * tool_, Simulation * sim_, int signID_, ui::Poi
 
 void SignWindow::OnTryExit(ui::Window::ExitMethod method)
 {
+	// As in the game, where edits apply as they are typed, leaving keeps them.
+	if (InRoom() && edited && (edited->text != original->text || edited->x != original->x ||
+	                           edited->y != original->y || edited->ju != original->ju) && edited->text.length())
+		tool->roomChange(signID, original, edited);
 	CloseActiveWindow();
 	SelfDestruct();
 }
 
 void SignWindow::DoDraw()
 {
-	for (auto &currentSign : sim->signs)
+	auto shown = sim->signs;
+	if (edited && signID < int(shown.size()))
+		shown[signID] = *edited;
+	for (auto &currentSign : shown)
 	{
 		int x, y, w, h, dx, dy;
 		Graphics * g = GetGraphics();

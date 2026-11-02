@@ -1,6 +1,7 @@
 #pragma once
 #include "Session.h"
 #include "simulation/SimulationSettings.h"
+#include "simulation/StructProperty.h"
 #include <json/json.h>
 #include <deque>
 #include <memory>
@@ -21,6 +22,9 @@ struct ToolStroke
     float strength = 1;
     bool dragging = false, shift = false, ctrl = false, alt = false;
     int replaceFlags = 0, replaceSelected = 0;
+    uint32_t decoColour = 0;        // decoration tools: ARGB
+    int property = 0;               // property tool: property and value
+    PropertyValue value = 0;
 };
 // Turns a stroke into protocol commands, splitting lines whose brush work
 // exceeds the per-command limit. Coordinates are clamped to the editable area.
@@ -58,6 +62,19 @@ public:
     bool Clear(std::string &why);
     // The room's simulation settings (admin), applied in order with edits.
     bool ChangeSettings(const SimulationSettingsChange &settings, std::string &why);
+    // Admin: reset air, pressure, velocity, sparks, ambientHeat or temperature; invertAir.
+    bool Reset(const std::string &what, std::string &why);
+    // Admin: a console command ({"op": "console", ...}), validated before it is sent.
+    bool Console(Json::Value command, std::string &why) { return SendAdmin(std::move(command), why); }
+    // This player's stickman: its key state, or placing it (once per player).
+    bool Stickman(int comm, int pcomm, std::string &why);
+    bool SpawnStickman(int x, int y, std::string &why);
+    int OwnStickman() const { return session.OwnStickman(); }
+    // Signs: add (index -1), edit or remove one, as the sign window does; or press a button sign.
+    bool Sign(int index, int expectX, int expectY, bool remove, const std::string &text, int x, int y, int justification, std::string &why);
+    bool SignButton(int index, int x, int y, std::string &why);
+    // A save or stamp (save file bytes) placed at cell (x, y), as the game places it.
+    bool Paste(const std::vector<char> &save, int x, int y, bool includePressure, std::string &why);
     // Every edit this player made has been applied to the shown world (or the
     // connection that carried it is gone).
     bool Settled() const { return outbox.empty() && session.OwnCommitted() >= session.Edits().Last(); }
@@ -89,5 +106,8 @@ private:
     bool Enqueue(std::vector<Json::Value> commands, std::string &why);
     void Flush();
     bool SendAdmin(Json::Value command, std::string &why);
+    bool SendStickman(Json::Value command, std::string &why);
+    size_t stickmanQueued = 0; // stickman commands waiting in the outbox
+    uint64_t pasteIds = 0;
 };
 }

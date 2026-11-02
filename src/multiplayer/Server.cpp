@@ -178,7 +178,10 @@ int main(int argc, char **argv)
         {
             room.Step();
             nextTick += tickPeriod;
-            if (nextTick < Clock::now()) nextTick = Clock::now();
+            // A late wake-up (coarse timers on a busy machine) is made up with
+            // immediate steps, so the room keeps its rate; only when far behind
+            // does it give up the lost time and slow down instead of bursting.
+            if (Clock::now() - nextTick > 8*tickPeriod) nextTick = Clock::now();
             // Edits arriving before the next tick apply at once, not up to a tick later.
             while (!stopping && !room.Failed() && room.WaitForRequests(nextTick)) room.ApplyEarly();
         }

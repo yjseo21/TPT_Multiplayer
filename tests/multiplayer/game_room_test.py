@@ -26,6 +26,21 @@ def rows(path):
 
 
 STEPS = [
+    # This player's stickman, first, on a clean floor: the stickman tool places it,
+    # arrow keys walk it (slow CI machines: wait until the room is synchronized).
+    dict(at=1.5, do="tool", tool="DEFAULT_PT_DMND", synced=True),
+    dict(at=1.5, do="brush", id=1, rx=4, ry=4),
+    dict(at=1.51, do="line", x1=300, y1=360, x2=600, y2=360),
+    dict(at=1.55, do="tool", tool="DEFAULT_PT_STKM"),
+    dict(at=1.56, do="points", x1=320, y1=330, x2=320, y2=330, held=False),
+    dict(at=1.9, do="mark", name="stickman-placed"),
+    dict(at=1.95, do="key", key="right", pressed=True),
+    dict(at=3.4, do="key", key="right", pressed=False),
+    dict(at=3.45, do="mark", name="stickman-walked"),
+    # Copy the stickman's floor and paste it higher up: the save travels to everyone.
+    dict(at=3.5, do="mark", name="before-paste"),
+    dict(at=3.55, do="paste", x1=300, y1=354, x2=600, y2=366, x=300, y=150),
+    dict(at=3.95, do="mark", name="after-paste"),
     # Room: an elliptical brush with different radii, a held stroke.
     dict(at=2.0, do="tool", tool="DEFAULT_PT_DUST"),
     dict(at=2.0, do="brush", id=0, rx=6, ry=2),
@@ -55,6 +70,22 @@ STEPS = [
     dict(at=6.4, do="points", x1=100, y1=200, x2=100, y2=200, held=False),
     dict(at=6.5, do="points", x1=100, y1=200, x2=150, y2=200, held=True),
     dict(at=8.4, do="toggle"),  # own canvas for 2 s: at least one log row
+    dict(at=8.56, do="reset", what="air"),  # admin: the room's air is reset for everyone
+    # Console commands change the room's world for everyone (admin).
+    dict(at=8.57, do="console", text="bubble 300,60"),
+    dict(at=8.58, do="console", text="create metl 500,60"),
+    dict(at=8.59, do="console", text="set tmp metl 9"),
+    # Decoration and property tools, and signs (with a button), reach the room too.
+    dict(at=8.591, do="decocolour", r=255, g=0, b=0, a=255),
+    dict(at=8.592, do="tool", tool="DEFAULT_DECOR_SET"),
+    dict(at=8.593, do="brush", id=0, rx=2, ry=2),
+    dict(at=8.594, do="points", x1=500, y1=60, x2=500, y2=60, held=False),
+    dict(at=8.595, do="property", name="tmp2", value="77"),
+    dict(at=8.596, do="tool", tool="DEFAULT_UI_PROPERTY"),
+    dict(at=8.597, do="points", x1=500, y1=60, x2=500, y2=60, held=False),
+    dict(at=8.598, do="sign", text="Hello room", x1=120, y1=40),
+    dict(at=8.599, do="sign", text="{b|press}", x1=200, y1=40),
+    dict(at=8.5995, do="console", text="create metl 200,40"),  # a button sparks the conductor under it
     # The room dialog over the game: the room keeps running underneath.
     dict(at=8.6, do="dialog"),
     dict(at=8.8, do="mark", name="dialog-open"),
@@ -70,6 +101,7 @@ STEPS = [
     dict(at=10.95, do="newtonian"),  # refused, with a notice
     # Administrator controls become room commands.
     dict(at=11.0, do="pause", paused=True),
+    dict(at=11.5, do="signbutton"),  # paused: the spark is still there at the mark
     dict(at=12.0, do="step"),
     dict(at=13.5, do="mark", name="before-leave"),
     # Leave, then join again through the dialog, which remembers the room.
@@ -160,6 +192,19 @@ def main():
             under = [r for r in g if r.get("mark") in ("dialog-open", "dialog-later")]
             assert len(under) == 2 and all(r["dialogOpen"] and r["status"] != "PAUSED" for r in under), under
             assert under[1]["localTick"] >= under[0]["localTick"] + 20, [(r["elapsedSeconds"], r["localTick"]) for r in under]
+            # The stickman tool placed this player's own stickman; arrow keys walked it.
+            placed = next(r for r in g if r.get("mark") == "stickman-placed")
+            walked = next(r for r in g if r.get("mark") == "stickman-walked")
+            assert placed["stickmanSlot"] in (1, 2, 3, 4) and "stickmanX" in placed, placed
+            assert walked["stickmanX"] > placed["stickmanX"] + 20, (placed.get("stickmanX"), walked.get("stickmanX"))
+            # Decoration (red), property (tmp2 77) and two signs reached the room; the button sparked.
+            assert before["metlDeco"] == 0xFFFF0000 and before["metlTmp2"] == 77, (before.get("metlDeco"), before.get("metlTmp2"))
+            assert before["signs"] == 2 and before["buttonSparked"], (before["signs"], before["buttonSparked"])
+            # The console's bubble and create reached the room (a ring of 31 SOAP, one METL).
+            assert before["soapCount"] >= 25 and before["metlCount"] >= 1, (before["soapCount"], before["metlCount"])
+            # The pasted copy of the floor reached the room (and the watcher, by fingerprint).
+            pasted = [r for r in g if r.get("mark") in ("before-paste", "after-paste")]
+            assert len(pasted) == 2 and pasted[1]["dmndCount"] >= 1.8 * pasted[0]["dmndCount"] > 0,                 [(r["mark"], r["dmndCount"], r.get("lastNotice")) for r in pasted]
             prefs = json.loads((game_dir / "powder.pref").read_text())
             assert prefs.get("Multiplayer", {}).get("Room") == f"ws://127.0.0.1:{port}", prefs
             assert any("too large" in r.get("lastNotice", "") for r in g), [(round(r.get("elapsedSeconds", -1), 2), r.get("lastNotice"), r.get("appliedCommands")) for r in g]
@@ -170,6 +215,8 @@ def main():
 
             w = rows(root / "watcher.jsonl")[-1]
             assert w["resyncs"] == 0 and w["status"] == "PAUSED", w
+            # Nothing follows the mark: the game's stickman stood still when it left, so the
+            # server had no stickman to stop.
             assert w["appliedCommands"] == before["appliedCommands"] >= 9, (w["appliedCommands"], before["appliedCommands"])
             text = (root / "server.log").read_text()
             assert "diverged" not in text, text

@@ -13,4 +13,5 @@ struct playerst
 	bool rocketBoots;
 	bool fan;
 	int spawnID;         //id of the SPWN particle that spawns it
+	int controller;      //multiplayer: a fighter driven by this room player (1-4) instead of its AI; 0 otherwise
 };

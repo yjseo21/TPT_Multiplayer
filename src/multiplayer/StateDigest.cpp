@@ -37,7 +37,7 @@ struct Hash
         U8(uint8_t(p.comm)); U8(uint8_t(p.pcomm)); I32(p.elem);
         for (float v : p.legs) F32(v);
         for (float v : p.accs) F32(v);
-        U8(uint8_t(p.spwn)); U32(p.frames); Bool(p.rocketBoots); Bool(p.fan); I32(p.spawnID);
+        U8(uint8_t(p.spwn)); U32(p.frames); Bool(p.rocketBoots); Bool(p.fan); I32(p.spawnID); I32(p.controller);
     }
     std::string Hex() const
     {

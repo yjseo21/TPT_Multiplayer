@@ -67,6 +67,12 @@ static int update(UPDATE_FUNC_ARGS)
 		return 1;
 	}
 	playerst* figh = &sim->fighters[(unsigned char)parts[i].tmp];
+	if (figh->controller)
+	{
+		// Multiplayer: a room player steers this fighter like a stickman.
+		Element_STKM_run_stickman(figh, UPDATE_FUNC_SUBCALL_ARGS);
+		return 0;
+	}
 
 	int tarx = 0, tary = 0;
 
@@ -188,6 +194,7 @@ int Element_FIGH_Alloc(Simulation *sim)
 	{
 		sim->fighters[i].spwn = 1;
 		sim->fighters[i].elem = PT_DUST;
+		sim->fighters[i].controller = 0;
 		sim->fighcount++;
 		return i;
 	}

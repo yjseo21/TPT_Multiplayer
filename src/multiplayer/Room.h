@@ -5,6 +5,7 @@
 #include "Traffic.h"
 #include "World.h"
 #include <json/json.h>
+#include <array>
 #include <chrono>
 #include <condition_variable>
 #include <deque>
@@ -104,6 +105,12 @@ private:
     void PublishFrames(const std::vector<std::shared_ptr<Peer>> &active);
     void Autosave();
     void Stats(const std::vector<std::shared_ptr<Peer>> &active);
+    void PasteChunk(const std::shared_ptr<Peer> &p, const Json::Value &v);
+    // Applies, journals and broadcasts one command; actor 0 is the server itself.
+    void Commit(const Command &command, uint32_t actor, const std::vector<std::shared_ptr<Peer>> &active);
+    void ReleaseStickmen(const std::vector<std::shared_ptr<Peer>> &active);
+    std::array<uint32_t, 5> stickmanHolders{}; // player id per stickman slot, as last seen
+    uint64_t serverSequence = 0; // commands the server issues itself (actor 0)
     // Since the last stats line: join snapshots captured (time on the room
     // thread) and the longest Step(), which is what every player feels.
     std::shared_ptr<SnapshotBuffers> snapshotBuffers = std::make_shared<SnapshotBuffers>();

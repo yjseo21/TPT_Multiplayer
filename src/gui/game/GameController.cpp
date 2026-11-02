@@ -2,6 +2,7 @@
 #ifdef TPT_GAME_MULTIPLAYER
 # include "multiplayer/GameSession.h"
 # include <fstream>
+# include <cstring>
 # include <iostream>
 #else
 namespace multiplayer { class GameSession {}; }
@@ -23,6 +24,9 @@ namespace multiplayer { class GameSession {}; }
 #include "RenderPreset.h"
 #include "tool/PropertyTool.h"
 #include "tool/GOLTool.h"
+#include "simulation/AccessProperty.h"
+#include "tool/DecorationTool.h"
+#include "tool/SignTool.h"
 
 #include "GameControllerEvents.h"
 #include "lua/CommandInterface.h"
@@ -269,9 +273,26 @@ std::pair<int, sign::Type> GameController::GetSignSplit(int signID)
 
 void GameController::PlaceSave(ui::Point position)
 {
-	if (RoomRefuses("Pasting saves and stamps"))
-		return;
 	auto *placeSave = gameModel->GetTransformedPlaceSave();
+#ifdef TPT_GAME_MULTIPLAYER
+	if (showRoom)
+	{
+		// The room's world: the placed save (as transformed) goes to the room.
+		if (placeSave)
+		{
+			auto [missing, data] = placeSave->Serialise();
+			std::string why;
+			if (missing)
+				RoomNotice("This stamp cannot be saved, so it cannot be pasted into a room.");
+			else if (!room->Paste(data, position.X, position.Y, !gameView->ShiftBehaviour(), why))
+				RoomNotice(ByteString(why).FromUtf8());
+			else
+				Client::Ref().MergeStampAuthorInfo(placeSave->authors);
+		}
+		gameModel->SetPlaceSave(nullptr);
+		return;
+	}
+#endif
 	if (placeSave)
 	{
 		HistorySnapshot();
@@ -313,7 +334,7 @@ void GameController::AdjustGridSize(int direction)
 
 void GameController::InvertAirSim()
 {
-	if (RoomRefuses("Inverting air"))
+	if (RoomReset("invertAir"))
 		return;
 	gameModel->GetSimulation()->air->Invert();
 }
@@ -616,8 +637,16 @@ bool GameController::MouseUp(int x, int y, unsigned button, MouseupReason reason
 						OpenSearch(str.Substr(3, si.first - 3));
 						break;
 					case sign::Type::Button:
-						if (!RoomRefuses("Sign buttons"))
-							gameModel->GetSimulation()->create_part(-1, foundSign.x, foundSign.y, PT_SPRK);
+#ifdef TPT_GAME_MULTIPLAYER
+						if (showRoom)
+						{
+							std::string why;
+							if (!room->SignButton(foundSignID, foundSign.x, foundSign.y, why))
+								RoomNotice(ByteString(why).FromUtf8());
+							break;
+						}
+#endif
+						gameModel->GetSimulation()->create_part(-1, foundSign.x, foundSign.y, PT_SPRK);
 						break;
 					default: break;
 					}
@@ -659,6 +688,8 @@ bool GameController::KeyPress(int key, int scan, bool repeat, bool shift, bool c
 		OpenRoomDialog();
 		return false;
 	}
+	if (ret && showRoom && RoomStickmanKey(key, true))
+		return ret;
 	if (ret)
 	{
 		Simulation * sim = gameModel->GetLocalSimulation();
@@ -741,6 +772,8 @@ bool GameController::KeyRelease(int key, int scan, bool repeat, bool shift, bool
 {
 	bool ret = commandInterface->HandleEvent(KeyReleaseEvent{ { key, scan, repeat, shift, ctrl, alt } });
 	if (repeat)
+		return ret;
+	if (ret && showRoom && RoomStickmanKey(key, false))
 		return ret;
 	if (ret)
 	{
@@ -828,7 +861,7 @@ void GameController::Exit()
 
 void GameController::ResetAir()
 {
-	if (RoomRefuses("Resetting air"))
+	if (RoomReset("air"))
 		return;
 	Simulation * sim = gameModel->GetSimulation();
 	sim->air->Clear();
@@ -843,7 +876,7 @@ void GameController::ResetAir()
 
 void GameController::ResetSpark()
 {
-	if (RoomRefuses("Resetting sparks"))
+	if (RoomReset("sparks"))
 		return;
 	auto &sd = SimulationData::CRef();
 	Simulation * sim = gameModel->GetSimulation();
@@ -932,7 +965,7 @@ bool GameController::GetAHeatEnable()
 
 void GameController::ResetAHeat()
 {
-	if (RoomRefuses("Resetting ambient heat"))
+	if (RoomReset("ambientHeat"))
 		return;
 	gameModel->ResetAHeat();
 }
@@ -1920,6 +1953,10 @@ void GameController::CreateDebugInfo()
 // to TPT_MP_AUTOMATION_LOG. Steps: {"at": seconds, "do": ...}, where "do" is
 // tool (identifier), brush (id, rx, ry), points (x1,y1,x2,y2,held), line, rect,
 // fill, toggle, pause (paused), step, clear, local (a refused action), leave,
+// key (key: left/right/up/down, pressed), reset (what: as RoomReset), console (text),
+// decocolour (r, g, b, a), property (name, value: configures the property tool),
+// sign (text at x1, y1, as the sign window's OK), signbutton (presses every button sign),
+// paste (copies x1,y1-x2,y2 of the shown world, places it at x, y),
 // gravity / air / edge / aheat / newtonian (the mode shortcuts), options
 // (gravityMode, customGravityX: as the options dialog sets them),
 // dialog, dialogjoin / dialogcancel (Enter / Escape on it), mark (name: logs a
@@ -1954,6 +1991,62 @@ bool GameController::RoomRefuses(String what)
 	return true;
 }
 
+bool GameController::RoomReset(ByteString what)
+{
+#ifdef TPT_GAME_MULTIPLAYER
+	if (!showRoom)
+		return false;
+	std::string why;
+	if (!room->Reset(what, why))
+		RoomNotice(room->Admin() ? ByteString(why).FromUtf8() : String("Only the room's administrator can reset or invert the room's air, sparks or heat."));
+	return true;
+#else
+	return false;
+#endif
+}
+
+void GameController::RoomConsole(const Json::Value &command)
+{
+#ifdef TPT_GAME_MULTIPLAYER
+	std::string why;
+	if (!room || !room->Console(command, why))
+		RoomNotice(room && !room->Admin() ? String("Only the room's administrator can change the room from the console.") : ByteString(why).FromUtf8());
+#endif
+}
+
+bool GameController::RoomStickmanKey(int key, bool pressed)
+{
+#ifdef TPT_GAME_MULTIPLAYER
+	if (key != SDLK_LEFT && key != SDLK_RIGHT && key != SDLK_UP && key != SDLK_DOWN)
+		return false;
+	// The same key logic as the single-player stickman, for this player's own.
+	auto comm = roomStickmanComm, pcomm = roomStickmanPcomm;
+	if (pressed)
+		comm |= key == SDLK_RIGHT ? 0x02 : key == SDLK_LEFT ? 0x01 : key == SDLK_DOWN ? 0x08 : 0x04;
+	else if (key == SDLK_RIGHT || key == SDLK_LEFT)
+	{
+		pcomm = comm;
+		comm &= 12;
+	}
+	else
+		comm &= key == SDLK_UP ? 11 : 7;
+	if (comm != roomStickmanComm || pcomm != roomStickmanPcomm)
+	{
+		std::string why;
+		if (room->Stickman(comm, pcomm, why))
+		{
+			roomStickmanComm = comm;
+			roomStickmanPcomm = pcomm;
+		}
+		else
+			RoomNotice(ByteString(why).FromUtf8());
+	}
+	return true;
+#else
+	return false;
+#endif
+}
+
 bool GameController::RoomTool(int toolSelection, const char *action, ui::Point a, ui::Point b, bool dragging, bool useToolStrength)
 {
 #ifdef TPT_GAME_MULTIPLAYER
@@ -1969,6 +2062,16 @@ bool GameController::RoomTool(int toolSelection, const char *action, ui::Point a
 		RoomNotice("Custom brushes are not available in rooms yet.");
 		return true;
 	}
+	if (activeTool->Identifier == "DEFAULT_UI_SAMPLE" || activeTool->Identifier == "DEFAULT_UI_SIGN")
+		return false; // sampling reads the shown world; the sign window sends its own changes
+	if (activeTool->Identifier == "DEFAULT_PT_STKM" || activeTool->Identifier == "DEFAULT_PT_STKM2")
+	{
+		// In a room the stickman tools place your own stickman (arrow keys steer it).
+		std::string why;
+		if ((!strcmp(action, "point") || !strcmp(action, "click")) && !room->SpawnStickman(b.X, b.Y, why))
+			RoomNotice(ByteString(why).FromUtf8());
+		return true;
+	}
 	multiplayer::ToolStroke stroke;
 	stroke.tool = activeTool->Identifier;
 	stroke.action = action;
@@ -1982,6 +2085,23 @@ bool GameController::RoomTool(int toolSelection, const char *action, ui::Point a
 	stroke.shift = gameView->ShiftBehaviour(); stroke.ctrl = gameView->CtrlBehaviour(); stroke.alt = gameView->AltBehaviour();
 	stroke.replaceFlags = GetReplaceModeFlags();
 	stroke.replaceSelected = gameModel->GetLocalSimulation()->replaceModeSelected;
+	if (activeTool->Identifier.BeginsWith("DEFAULT_DECOR_"))
+	{
+		if (!strcmp(action, "fill"))
+		{
+			RoomNotice("Decoration fill is not available in rooms: it floods by the colours your own view shows.");
+			return true;
+		}
+		stroke.decoColour = static_cast<DecorationTool *>(activeTool)->Colour.Pack();
+	}
+	else if (activeTool->Identifier == "DEFAULT_UI_PROPERTY")
+	{
+		auto configuration = static_cast<PropertyTool *>(activeTool)->GetConfiguration();
+		if (!configuration)
+			return true; // nothing chosen yet (the property window is open)
+		stroke.property = configuration->changeProperty.propertyIndex;
+		stroke.value = configuration->changeProperty.propertyValue;
+	}
 	std::string why;
 	if (!room->Send(stroke, why))
 		RoomNotice(ByteString(why).FromUtf8());
@@ -2021,6 +2141,7 @@ void GameController::JoinRoom(ByteString url, ByteString name, std::optional<Byt
 	lastRoomToken = roomToken ? *roomToken : env("TPT_ROOM_TOKEN");
 	lastAdminToken = adminToken ? *adminToken : env("TPT_ADMIN_TOKEN");
 	options.roomToken = lastRoomToken; options.adminToken = lastAdminToken;
+	roomStickmanComm = roomStickmanPcomm = 0;
 	try
 	{
 		room = std::make_unique<multiplayer::GameSession>(options);
@@ -2087,6 +2208,7 @@ void GameController::EndRoom(String why)
 	}
 	gameView->SetRoomStatus("");
 	gameView->SetRoomOverlay({});
+	UpdateRoomSigns();
 	gameModel->Log(why, false);
 #endif
 }
@@ -2190,7 +2312,33 @@ void GameController::UpdateRoom()
 		}
 	}
 	gameView->SetRoomStatus(status.Build());
+	UpdateRoomSigns();
 	RunRoomAutomation();
+#endif
+}
+
+void GameController::UpdateRoomSigns()
+{
+#ifdef TPT_GAME_MULTIPLAYER
+	auto *signTool = static_cast<SignTool *>(gameModel->GetToolFromIdentifier("DEFAULT_UI_SIGN"));
+	if (!signTool)
+		return;
+	if (!showRoom || !room)
+	{
+		signTool->roomChange = nullptr;
+		return;
+	}
+	if (!signTool->roomChange)
+		signTool->roomChange = [this](int index, std::optional<sign> original, std::optional<sign> result) {
+			std::string why;
+			if (!room)
+				return;
+			auto expectX = original ? original->x : 0, expectY = original ? original->y : 0;
+			bool sent = result ? room->Sign(index, expectX, expectY, false, result->text.ToUtf8(), result->x, result->y, int(result->ju), why)
+			                   : room->Sign(index, expectX, expectY, true, "", 0, 0, 0, why);
+			if (!sent)
+				RoomNotice(ByteString(why).FromUtf8());
+		};
 #endif
 }
 
@@ -2198,6 +2346,23 @@ void GameController::UpdateRoomOverlay()
 {
 #ifdef TPT_GAME_MULTIPLAYER
 	RoomOverlay overlay;
+	auto *shown = room->Shown();
+	for (auto &p : room->Players())
+	{
+		// Each player's name over their stickman (slot 1 STKM, 2 STKM2, 3-4 fighters).
+		auto slot = p["stickman"].asInt();
+		playerst *stickman = slot == 1 ? &shown->player : slot == 2 ? &shown->player2 : nullptr;
+		if (slot > 2)
+			for (auto &fighter : shown->fighters)
+				if (fighter.spwn && fighter.controller == slot)
+					stickman = &fighter;
+		if (room->Synchronized() && stickman && stickman->spwn)
+		{
+			float x = (stickman->legs[0] + stickman->legs[4] + stickman->legs[8] + stickman->legs[12]) / 4;
+			float top = std::min({ stickman->legs[1], stickman->legs[5], stickman->legs[9], stickman->legs[13] });
+			overlay.labels.push_back({ { int(x), int(top) - 14 }, p["player"].asUInt(), ByteString(p["name"].asString()).FromUtf8() });
+		}
+	}
 	for (auto &p : room->Players())
 		if (p["player"].asUInt() != room->OwnPlayer() && p["visible"].asBool())
 			overlay.cursors.push_back({ { p["x"].asInt(), p["y"].asInt() }, p["radius"].asInt(), p["drawing"].asBool(),
@@ -2210,8 +2375,8 @@ void GameController::UpdateRoomOverlay()
 			if (!box && action != "point" && action != "line")
 				return; // a fill's extent is only known once applied
 			auto identifier = ByteString(c["tool"].asString());
-			if (identifier.BeginsWith("DEFAULT_TOOL_"))
-				return; // heat, air and the like change nothing visible at once
+			if (identifier.BeginsWith("DEFAULT_TOOL_") || identifier.BeginsWith("DEFAULT_DECOR_") || identifier.BeginsWith("DEFAULT_UI_"))
+				return; // heat, air, decoration and properties: no particle colour to preview
 			auto *tool = gameModel->GetToolFromIdentifier(identifier);
 			if (!tool)
 				return;
@@ -2250,6 +2415,29 @@ void GameController::RunRoomAutomation()
 		sample["edgeMode"] = shown->edgeMode; sample["ambientHeat"] = bool(shown->aheat_enable);
 		sample["newtonianGravity"] = bool(shown->grav);
 		sample["customGravityX"] = shown->customGravityX;
+		sample["pressureAt"] = shown->pv[YCELLS/2][XCELLS/2];
+		sample["soapCount"] = shown->elementCount[PT_SOAP];
+		sample["dmndCount"] = shown->elementCount[PT_DMND];
+		sample["signs"] = Json::UInt64(shown->signs.size());
+		sample["wallCells"] = [shown] { int n = 0; for (auto &row : shown->bmap) for (auto cell : row) n += cell != 0; return n; }();
+		if (auto r = shown->pmap[60][500]; r && TYP(r) == PT_METL)
+		{
+			sample["metlDeco"] = Json::UInt64(shown->parts[ID(r)].dcolour);
+			sample["metlTmp2"] = shown->parts[ID(r)].tmp2;
+		}
+		sample["buttonSparked"] = shown->pmap[40][200] && TYP(shown->pmap[40][200]) == PT_SPRK; // under the test's button sign
+		sample["metlCount"] = shown->elementCount[PT_METL];
+		if (room)
+		{
+			auto slot = room->OwnStickman();
+			sample["stickmanSlot"] = slot;
+			playerst *own = slot == 1 ? &shown->player : slot == 2 ? &shown->player2 : nullptr;
+			for (auto &fighter : shown->fighters)
+				if (slot > 2 && fighter.spwn && fighter.controller == slot)
+					own = &fighter;
+			if (own && own->spwn)
+				sample["stickmanX"] = (own->legs[0] + own->legs[4] + own->legs[8] + own->legs[12]) / 4;
+		}
 		sample["ownGravityMode"] = gameModel->GetLocalSimulation()->gravityMode;
 		sample["previewPeak"] = Json::UInt64(roomGhostsPeak);
 		roomGhostsPeak = 0;
@@ -2290,7 +2478,58 @@ void GameController::RunRoomAutomation()
 		else if (act == "pause") SetPaused(step["paused"].asBool());
 		else if (act == "step") FrameStep();
 		else if (act == "clear") ClearSim();
-		else if (act == "local") ResetAir();
+		else if (act == "local") HistoryRestore(); // undo: refused in rooms
+		else if (act == "reset") RoomReset(ByteString(step["what"].asString()));
+		else if (act == "paste")
+		{
+			// Copy a region, then place it: as the copy tool and a click would.
+			auto save = gameModel->GetSimulation()->Save(true, RectBetween(a, b));
+			if (save)
+			{
+				gameModel->SetPlaceSave(std::move(save));
+				PlaceSave({ step["x"].asInt() / CELL, step["y"].asInt() / CELL }); // saves are placed in cells
+			}
+		}
+		else if (act == "decocolour") SetColour(ui::Colour(step["r"].asInt(), step["g"].asInt(), step["b"].asInt(), step["a"].asInt()));
+		else if (act == "property")
+		{
+			// What the property window does: configure the tool with a property and value.
+			auto *tool = static_cast<PropertyTool *>(gameModel->GetToolFromIdentifier("DEFAULT_UI_PROPERTY"));
+			int index = 0;
+			auto &properties = Particle::GetProperties();
+			while (index < int(properties.size()) && properties[index].Name != ByteString(step["name"].asString()))
+				++index;
+			tool->SetConfiguration(PropertyTool::Configuration{ AccessProperty::Parse(index, ByteString(step["value"].asString()).FromUtf8(), GetTemperatureScale()), ByteString(step["value"].asString()).FromUtf8() });
+		}
+		else if (act == "sign" || act == "signbutton")
+		{
+			// What the sign window hands over on OK (new sign); a click on a button sign.
+			auto *tool = static_cast<SignTool *>(gameModel->GetToolFromIdentifier("DEFAULT_UI_SIGN"));
+			if (act == "sign" && tool->roomChange)
+				tool->roomChange(-1, std::nullopt, sign(ByteString(step["text"].asString()).FromUtf8(), a.X, a.Y, sign::Middle));
+			else if (act == "signbutton")
+			{
+				std::string why;
+				auto &signs = gameModel->GetSimulation()->signs;
+				for (int i = 0; i < int(signs.size()); ++i)
+					if (signs[i].split().second == sign::Type::Button && !room->SignButton(i, signs[i].x, signs[i].y, why))
+						RoomNotice(ByteString(why).FromUtf8());
+			}
+		}
+		else if (act == "console")
+		{
+			// A console line, as typed: the legacy commands need "!" when Lua runs the console.
+			auto text = ByteString(step["text"].asString()).FromUtf8();
+			commandInterface->Command(LUACONSOLE ? "!" + text : text);
+		}
+		else if (act == "key")
+		{
+			// Arrow keys, through the same entry points as the keyboard.
+			auto name = step["key"].asString();
+			int key = name == "left" ? SDLK_LEFT : name == "right" ? SDLK_RIGHT : name == "up" ? SDLK_UP : SDLK_DOWN;
+			if (step["pressed"].asBool()) KeyPress(key, 0, false, false, false, false);
+			else KeyRelease(key, 0, false, false, false, false);
+		}
 		else if (act == "leave") LeaveRoom();
 		else if (act == "gravity") SwitchGravity();
 		else if (act == "air") SwitchAir();

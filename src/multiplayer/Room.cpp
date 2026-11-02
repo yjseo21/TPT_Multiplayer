@@ -72,6 +72,7 @@ void Room::OnMessage(const std::shared_ptr<Peer> &p, const ix::WebSocketMessage 
             p->Acknowledge(v["frame"].asUInt64()); return;
         }
         if (v["type"] == "probe") { Probe(p, v); return; }
+        if (v["type"] == "paste_chunk") { PasteChunk(p, v); return; }
         if (v["type"] == "resync") { p->StreamControl(); p->ResetStream(); return; }
         if (v["type"] == "desync_report") { DesyncReport(p, v); return; }
         if (v["type"] == "view")
@@ -95,6 +96,23 @@ void Room::OnMessage(const std::shared_ptr<Peer> &p, const ix::WebSocketMessage 
         else p->Error(e.what(), seq);
     }
 }
+void Room::PasteChunk(const std::shared_ptr<Peer> &p, const Json::Value &v)
+{
+    // Chunks of one upload arrive in order on this connection; a new id starts over.
+    if (!v["id"].isUInt64() || !v["data"].isString() || v["data"].asString().size() > MaxPasteChunkChars)
+        throw std::runtime_error("invalid paste upload");
+    if (v["id"].asUInt64() != p->pasteId) { p->pasteId = v["id"].asUInt64(); p->pasteSave.clear(); }
+    if (p->pasteSave.size() + v["data"].asString().size() > (MaxPasteBytes+2)/3*4)
+        throw std::runtime_error("pasted save too large for a room");
+    // Uploads share the player's editing budget (one operation per chunk).
+    auto now = Clock::now();
+    double elapsed = std::chrono::duration<double>(now - p->refill).count(); p->refill = now;
+    p->operations = std::min(120.0, p->operations + elapsed * 120);
+    p->work = std::min(EditWorkPerSecond, p->work + elapsed * EditWorkPerSecond);
+    if (p->operations < 1) throw std::runtime_error("editing rate exceeded");
+    p->operations -= 1;
+    p->pasteSave += v["data"].asString();
+}
 void Room::Hello(const std::shared_ptr<Peer> &p, const Json::Value &v)
 {
     if (v["type"] != "hello" || !v["protocol"].isUInt() || v["protocol"].asUInt() != ProtocolVersion || v["build"] != BuildId)
@@ -114,6 +132,10 @@ void Room::Hello(const std::shared_ptr<Peer> &p, const Json::Value &v)
         upload.Join(p->id, config.bandwidthKbps*1000.0/8, MonotonicSeconds());
     }
     p->admin = isAdmin;
+    // The lowest stickman slot no connected player holds.
+    for (int slot = 1; slot <= 4 && !p->stickmanSlot; ++slot)
+        if (std::none_of(peers.begin(), peers.end(), [&](auto &o) { return o != p && o->authenticated && !o->closed && o->stickmanSlot == slot; }))
+            p->stickmanSlot = slot;
     p->name = v["name"].asString();
     for (auto &c : p->name) if (static_cast<unsigned char>(c) < 32 || c == 127) c = '?';
     p->wantsPresence = v["presence"].isBool() && v["presence"].asBool();
@@ -125,7 +147,7 @@ void Room::Hello(const std::shared_ptr<Peer> &p, const Json::Value &v)
         v["webp"].isBool() && v["webp"].asBool();
     Json::Value welcome;
     welcome["type"] = "welcome"; welcome["protocol"] = ProtocolVersion; welcome["build"] = BuildId;
-    welcome["player"] = p->id; welcome["admin"] = bool(p->admin);
+    welcome["player"] = p->id; welcome["admin"] = bool(p->admin); welcome["stickman"] = p->stickmanSlot.load();
     welcome["width"] = XRES; welcome["height"] = YRES;
     welcome["stream"] = "canvas-delta-v3"; welcome["bandwidthKbps"] = config.bandwidthKbps;
     welcome["webp"] = bool(p->useWebP);
@@ -238,7 +260,21 @@ void Room::QueueRequest(const std::shared_ptr<Peer> &p, const Json::Value &v, ui
     }
     else
     {
-        request.command = ParseCommand(v, p->admin);
+        if (v["op"] == "paste")
+        {
+            // The uploaded save becomes part of the command, and of its commit.
+            if (!v["upload"].isUInt64() || v["upload"].asUInt64() != p->pasteId || p->pasteSave.empty())
+                throw std::runtime_error("paste without its uploaded save");
+            auto withSave = v;
+            withSave["save"] = std::move(p->pasteSave);
+            withSave.removeMember("upload");
+            p->pasteSave.clear(); p->pasteId = 0;
+            request.command = ParseCommand(withSave, p->admin);
+        }
+        else request.command = ParseCommand(v, p->admin);
+        // A player only ever steers their own stickman.
+        if (request.command.kind == Command::Stickman || request.command.kind == Command::StickmanSpawn)
+            request.command.slot = p->stickmanSlot;
         cost = request.command.Cost();
     }
     auto now = Clock::now();
@@ -280,6 +316,7 @@ void Room::BroadcastPresence(const std::vector<std::shared_ptr<Peer>> &active)
             std::lock_guard lock(p->mutex);
             Json::Value player = p->cursor;
             player["player"] = p->id; player["name"] = p->name; player["admin"] = bool(p->admin);
+            player["stickman"] = p->stickmanSlot.load();
             player["visible"] = !p->cursor.isNull() && p->cursor["visible"].asBool() && now-p->cursorAt < 2;
             roster["players"].append(player);
         }
@@ -290,8 +327,59 @@ void Room::BroadcastPresence(const std::vector<std::shared_ptr<Peer>> &active)
         }
     }
 }
+void Room::Commit(const Command &command, uint32_t actor, const std::vector<std::shared_ptr<Peer>> &active)
+{
+    auto beforeTick = world.tick, beforeRevision = world.revision;
+    world.Apply(command);
+    EditStamp stamp;
+    try
+    {
+        stamp = timeline.Commit(beforeTick, world.tick, beforeRevision,
+            world.revision, world.resetGeneration);
+        if (journal) journal->Edit(stamp, actor, command);
+    }
+    catch (...) { failed = true; throw; } // Fail closed after an unjournaled mutation.
+    // The server has a total ordering even when multiple edits
+    // are applied at the same (paused) simulation tick.
+    Json::Value event;
+    event["type"] = "command_commit";
+    event["id"] = Json::UInt64(stamp.eventId);
+    event["epoch"] = Json::UInt64(stamp.epoch);
+    event["tick"] = Json::UInt64(stamp.tick);
+    event["ordinal"] = Json::UInt64(stamp.ordinal);
+    event["afterTick"] = Json::UInt64(stamp.afterTick);
+    event["revision"] = Json::UInt64(stamp.revision);
+    event["resetGeneration"] = Json::UInt64(world.resetGeneration);
+    event["actor"] = actor; // 0: the server itself
+    event["command"] = RecordCommand(command);
+    // The current canvas clients do not consume commits;
+    // future lockstep clients can explicitly opt in.
+    for (auto &viewer : active)
+        if (viewer->authenticated && !viewer->closed && viewer->wantsCommits &&
+            (!viewer->replica || !viewer->needsReplicaBootstrap))
+            viewer->Text(event);
+}
+void Room::ReleaseStickmen(const std::vector<std::shared_ptr<Peer>> &active)
+{
+    // A stickman whose player left (or whose slot changed hands) stops moving
+    // (only if it is moving: no command for nothing).
+    for (int slot = 1; slot <= 4; ++slot)
+    {
+        uint32_t holder = 0;
+        for (auto &p : active) if (p->stickmanSlot == slot) holder = p->id;
+        auto *stickman = RoomStickman(*world.sim, slot);
+        if (stickmanHolders[slot] && stickmanHolders[slot] != holder && stickman && stickman->comm)
+        {
+            Command stop{Command::Stickman, ++serverSequence};
+            stop.slot = slot;
+            Commit(stop, 0, active);
+        }
+        stickmanHolders[slot] = holder;
+    }
+}
 void Room::ApplyRequests(const std::vector<std::shared_ptr<Peer>> &active)
 {
+    ReleaseStickmen(active);
     std::deque<Request> pending;
     { std::lock_guard lock(queueMutex); pending.swap(queue); }
     for (auto &r : pending)
@@ -324,38 +412,7 @@ void Room::ApplyRequests(const std::vector<std::shared_ptr<Peer>> &active)
                 target->closed = true; target->changed.notify_one();
                 std::cout << "Player " << r.target << " removed by player " << r.peer->id << std::endl;
             }
-            else
-            {
-                auto beforeTick = world.tick, beforeRevision = world.revision;
-                world.Apply(r.command);
-                EditStamp stamp;
-                try
-                {
-                    stamp = timeline.Commit(beforeTick, world.tick, beforeRevision,
-                        world.revision, world.resetGeneration);
-                    if (journal) journal->Edit(stamp, r.peer->id, r.command);
-                }
-                catch (...) { failed = true; throw; } // Fail closed after an unjournaled mutation.
-                // The server has a total ordering even when multiple edits
-                // are applied at the same (paused) simulation tick.
-                Json::Value event;
-                event["type"] = "command_commit";
-                event["id"] = Json::UInt64(stamp.eventId);
-                event["epoch"] = Json::UInt64(stamp.epoch);
-                event["tick"] = Json::UInt64(stamp.tick);
-                event["ordinal"] = Json::UInt64(stamp.ordinal);
-                event["afterTick"] = Json::UInt64(stamp.afterTick);
-                event["revision"] = Json::UInt64(stamp.revision);
-                event["resetGeneration"] = Json::UInt64(world.resetGeneration);
-                event["actor"] = r.peer->id;
-                event["command"] = RecordCommand(r.command);
-                // The current canvas clients do not consume commits;
-                // future lockstep clients can explicitly opt in.
-                for (auto &viewer : active)
-                    if (viewer->authenticated && !viewer->closed && viewer->wantsCommits &&
-                        (!viewer->replica || !viewer->needsReplicaBootstrap))
-                        viewer->Text(event);
-            }
+            else Commit(r.command, r.peer->id, active);
             Json::Value ack;
             ack["type"] = "ack"; ack["seq"] = Json::UInt64(r.command.sequence);
             ack["tick"] = Json::UInt64(world.tick); ack["revision"] = Json::UInt64(world.revision);

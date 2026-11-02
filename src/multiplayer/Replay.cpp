@@ -44,7 +44,7 @@ int Run(const std::string &path, const std::string &digestOutput)
         if (line.empty()) continue;
         try
         {
-            Json::Value row = ParseJson(line);
+            Json::Value row = ParseJson(line, MaxOrderedBytes);
             Need(row["kind"].isString(), "missing row kind");
             const std::string kind = row["kind"].asString();
             if (!headerSeen)

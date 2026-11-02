@@ -547,6 +547,12 @@ int CommandInterface::Command(String command)
 	}
 	else
 	{
+		if (lsi->gameModel->ShowingRoom() && !lsi->roomLuaNoticeShown)
+		{
+			// Lua scripts change the player's own world; the room has its own commands.
+			lsi->roomLuaNoticeShown = true;
+			lsi->gameModel->Log("Lua runs on your own canvas. In a room, its administrator uses !set, !create, !delete, !bubble and !reset.", false);
+		}
 		int level = lua_gettop(L), ret = -1;
 		lsi->gameModel->logSink = [this](String text) {
 			auto *lsi = static_cast<LuaScriptInterface *>(this);

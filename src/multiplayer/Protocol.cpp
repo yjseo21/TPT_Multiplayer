@@ -1,7 +1,9 @@
 #include "Protocol.h"
 #include "simulation/SimulationData.h"
+#include "simulation/Sign.h"
 #include <zlib.h>
 #include <bit>
+#include <cmath>
 #include <algorithm>
 #include <stdexcept>
 #include <limits>
@@ -176,9 +178,52 @@ Frame DecodeFrame(std::string_view packet)
     return f;
 }
 
-Json::Value ParseJson(std::string_view text)
+std::string Base64Encode(std::string_view bytes)
 {
-    if (text.size() > MaxCommandBytes) throw std::runtime_error("message too large");
+    static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string out;
+    out.reserve((bytes.size()+2)/3*4);
+    for (size_t i = 0; i < bytes.size(); i += 3)
+    {
+        uint32_t n = uint32_t(uint8_t(bytes[i])) << 16;
+        if (i+1 < bytes.size()) n |= uint32_t(uint8_t(bytes[i+1])) << 8;
+        if (i+2 < bytes.size()) n |= uint8_t(bytes[i+2]);
+        out += alphabet[(n >> 18) & 63]; out += alphabet[(n >> 12) & 63];
+        out += i+1 < bytes.size() ? alphabet[(n >> 6) & 63] : '=';
+        out += i+2 < bytes.size() ? alphabet[n & 63] : '=';
+    }
+    return out;
+}
+std::string Base64Decode(std::string_view text)
+{
+    auto value = [](char c) -> int {
+        if (c >= 'A' && c <= 'Z') return c-'A';
+        if (c >= 'a' && c <= 'z') return c-'a'+26;
+        if (c >= '0' && c <= '9') return c-'0'+52;
+        if (c == '+') return 62;
+        if (c == '/') return 63;
+        return -1;
+    };
+    if (text.size() % 4) throw std::runtime_error("invalid base64");
+    std::string out;
+    out.reserve(text.size()/4*3);
+    for (size_t i = 0; i < text.size(); i += 4)
+    {
+        int a = value(text[i]), b = value(text[i+1]);
+        bool last = i+4 == text.size();
+        int c = last && text[i+2] == '=' ? -2 : value(text[i+2]);
+        int d = last && text[i+3] == '=' ? -2 : value(text[i+3]);
+        if (a < 0 || b < 0 || c == -1 || d == -1 || (c == -2 && d != -2)) throw std::runtime_error("invalid base64");
+        uint32_t n = uint32_t(a) << 18 | uint32_t(b) << 12 | uint32_t(c < 0 ? 0 : c) << 6 | uint32_t(d < 0 ? 0 : d);
+        out += char(n >> 16);
+        if (c >= 0) out += char((n >> 8) & 255);
+        if (d >= 0) out += char(n & 255);
+    }
+    return out;
+}
+Json::Value ParseJson(std::string_view text, size_t maxBytes)
+{
+    if (text.size() > maxBytes) throw std::runtime_error("message too large");
     Json::CharReaderBuilder b;
     b["failIfExtra"] = true; b["rejectDupKeys"] = true; b["allowComments"] = false;
     b["stackLimit"] = 16;
@@ -213,6 +258,7 @@ unsigned Command::Cost() const
         if (action == "box") return unsigned((std::abs(x2-x1)+1)*(std::abs(y2-y1)+1));
         return unsigned((std::max(std::abs(x2-x1), std::abs(y2-y1))+1)*(2*radius+1)*(2*radiusY+1));
     }
+    if (kind == Paste) return XRES*YRES;
     return kind == Brush ? unsigned((std::max(std::abs(x2-x1), std::abs(y2-y1)) + 1) * (2*radius+1) * (2*radius+1)) : 1;
 }
 namespace
@@ -255,6 +301,44 @@ SimulationSettingsChange ParseSettings(const Json::Value &v)
     if (known != v.size()) throw std::runtime_error("unknown setting");
     return s;
 }
+}
+// A particle property and a value of its type (console set, property tool).
+void ParsePropertyValue(const Json::Value &v, Command &c)
+{
+    auto &sd = SimulationData::CRef();
+    auto &properties = Particle::GetProperties();
+    c.property = Integer(v, "property", 0, int(properties.size())-1);
+    auto type = properties[c.property].Type;
+    if (type == StructProperty::Float)
+    {
+        if (!v["value"].isNumeric() || !std::isfinite(v["value"].asDouble())) throw std::runtime_error("invalid property value");
+        c.value = float(v["value"].asDouble());
+    }
+    else if (type == StructProperty::UInteger)
+    {
+        if (!v["value"].isUInt()) throw std::runtime_error("invalid property value");
+        c.value = v["value"].asUInt();
+    }
+    else if (type == StructProperty::Integer || type == StructProperty::ParticleType)
+    {
+        if (!v["value"].isInt()) throw std::runtime_error("invalid property value");
+        auto value = v["value"].asInt();
+        if (c.property == FIELD_TYPE && (value < 0 || value >= PT_NUM || (value && !sd.elements[value].Enabled)))
+            throw std::runtime_error("invalid particle type");
+        c.value = value;
+    }
+    else throw std::runtime_error("property cannot be set");
+}
+int DecorationMode(const std::string &identifier)
+{
+    if (identifier == "DEFAULT_DECOR_SET") return DECO_DRAW;
+    if (identifier == "DEFAULT_DECOR_CLR") return DECO_CLEAR;
+    if (identifier == "DEFAULT_DECOR_ADD") return DECO_ADD;
+    if (identifier == "DEFAULT_DECOR_SUB") return DECO_SUBTRACT;
+    if (identifier == "DEFAULT_DECOR_MUL") return DECO_MULTIPLY;
+    if (identifier == "DEFAULT_DECOR_DIV") return DECO_DIVIDE;
+    if (identifier == "DEFAULT_DECOR_SMDG") return DECO_SMUDGE;
+    return -1;
 }
 Json::Value SettingsJson(const SimulationSettingsChange &settings)
 {
@@ -303,7 +387,65 @@ Command ParseCommand(const Json::Value &v, bool admin)
             return v[key].asBool();
         };
         c.dragging = flag("dragging", true); c.shift = flag("shift", false); c.ctrl = flag("ctrl", false); c.alt = flag("alt", false);
+        if (DecorationMode(c.tool) >= 0)
+        {
+            // A decoration fill floods by rendered colour, which differs per player.
+            if (c.action == "fill") throw std::runtime_error("decoration fill is not available in rooms");
+            if (!v["colour"].isUInt()) throw std::runtime_error("invalid decoration colour");
+            c.decoColour = v["colour"].asUInt();
+        }
+        else if (c.tool == "DEFAULT_UI_PROPERTY") ParsePropertyValue(v, c);
         if (c.Cost() > ToolCommandCostLimit) throw std::runtime_error("tool operation too large; split it into segments");
+    }
+    else if (op == "paste")
+    {
+        // A save or stamp, placed as the game places it (anyone may paste, as in the game).
+        c.kind = Command::Paste;
+        if (!v["save"].isString() || v["save"].asString().size() > (MaxPasteBytes+2)/3*4)
+            throw std::runtime_error("pasted save too large for a room");
+        c.text = v["save"].asString();
+        Base64Decode(c.text); // well-formed; the save itself is checked when it is applied
+        c.x1 = Integer(v, "x1", -XCELLS, XCELLS); c.y1 = Integer(v, "y1", -YCELLS, YCELLS); // cells, as the game places saves
+        c.includePressure = !v.isMember("pressure") || v["pressure"].asBool();
+    }
+    else if (op == "sign")
+    {
+        // Signs are everyone's to edit, as in the game.
+        c.kind = Command::Sign;
+        c.index = Integer(v, "index", -1, MAXSIGNS-1);
+        c.remove = v.isMember("remove") && v["remove"].asBool();
+        if (c.index >= 0) { c.x2 = Integer(v, "x2", 0, XRES-1); c.y2 = Integer(v, "y2", 0, YRES-1); }
+        if (c.remove && c.index < 0) throw std::runtime_error("invalid sign");
+        if (!c.remove)
+        {
+            if (!v["text"].isString()) throw std::runtime_error("invalid sign text");
+            c.text = v["text"].asString();
+            auto length = ByteString(c.text).FromUtf8().size();
+            if (!length || length > 45) throw std::runtime_error("sign text must have 1-45 characters");
+            c.x1 = Integer(v, "x1", 0, XRES-1); c.y1 = Integer(v, "y1", 0, YRES-1);
+            c.justification = Integer(v, "justification", 0, 3);
+        }
+    }
+    else if (op == "sign_button")
+    {
+        c.kind = Command::SignButton;
+        c.index = Integer(v, "index", 0, MAXSIGNS-1);
+        c.x1 = Integer(v, "x1", 0, XRES-1); c.y1 = Integer(v, "y1", 0, YRES-1);
+    }
+    else if (op == "stickman" || op == "stickman_spawn")
+    {
+        // Every player steers their own stickman; the server fills in "slot".
+        c.slot = v.isMember("slot") ? Integer(v, "slot", 1, 4) : 0;
+        if (op == "stickman")
+        {
+            c.kind = Command::Stickman;
+            c.comm = Integer(v, "comm", 0, 15); c.pcomm = Integer(v, "pcomm", 0, 15);
+        }
+        else
+        {
+            c.kind = Command::StickmanSpawn;
+            c.x1 = Integer(v, "x1", CELL, XRES-CELL-1); c.y1 = Integer(v, "y1", CELL, YRES-CELL-1);
+        }
     }
     else
     {
@@ -316,6 +458,51 @@ Command ParseCommand(const Json::Value &v, bool admin)
         }
         else if (op == "step") c.kind = Command::Step;
         else if (op == "clear") c.kind = Command::Clear;
+        else if (op == "console")
+        {
+            c.kind = Command::Console;
+            if (!v["cmd"].isString()) throw std::runtime_error("invalid console command");
+            c.cmd = v["cmd"].asString();
+            auto &sd = SimulationData::CRef();
+            auto point = [&] { c.x1 = Integer(v, "x1", 0, XRES-1); c.y1 = Integer(v, "y1", 0, YRES-1); };
+            if (c.cmd == "set")
+            {
+                ParsePropertyValue(v, c);
+                if (!v["selector"].isString()) throw std::runtime_error("invalid selector");
+                c.selector = v["selector"].asString();
+                if (c.selector == "index") c.index = Integer(v, "index", 0, NPART-1);
+                else if (c.selector == "point") point();
+                else if (c.selector == "type")
+                {
+                    c.element = Integer(v, "element", 1, PT_NUM-1);
+                    if (!sd.elements[c.element].Enabled) throw std::runtime_error("invalid particle type");
+                }
+                else if (c.selector != "all") throw std::runtime_error("invalid selector");
+            }
+            else if (c.cmd == "create")
+            {
+                c.element = Integer(v, "element", 1, INT32_MAX);
+                if (TYP(c.element) >= PT_NUM || !sd.elements[TYP(c.element)].Enabled || ID(c.element) >= (1 << 16))
+                    throw std::runtime_error("invalid particle type");
+                point();
+            }
+            else if (c.cmd == "delete")
+            {
+                if (v.isMember("index")) c.index = Integer(v, "index", 0, NPART-1);
+                else point();
+            }
+            else if (c.cmd == "bubble") point();
+            else throw std::runtime_error("unknown console command");
+        }
+        else if (op == "reset")
+        {
+            c.kind = Command::Reset;
+            if (!v["what"].isString()) throw std::runtime_error("invalid reset");
+            c.what = v["what"].asString();
+            if (c.what != "air" && c.what != "pressure" && c.what != "velocity" && c.what != "sparks" &&
+                c.what != "ambientHeat" && c.what != "temperature" && c.what != "invertAir")
+                throw std::runtime_error("unknown reset");
+        }
         else if (op == "settings")
         {
             c.kind = Command::Settings;

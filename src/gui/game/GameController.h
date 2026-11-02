@@ -46,6 +46,10 @@ class LoginController;
 class TagsController;
 class ConsoleController;
 namespace multiplayer { class GameSession; }
+namespace Json
+{
+	class Value;
+}
 class GameController : public ClientListener, public ExplicitSingleton<GameController>
 {
 	CommandInterfacePtr commandInterface;
@@ -83,6 +87,10 @@ private:
 	bool RoomTool(int toolSelection, const char *action, ui::Point a, ui::Point b, bool dragging, bool useToolStrength);
 	void UpdateRoom();
 	void UpdateRoomOverlay();
+	void UpdateRoomSigns(); // the sign tool sends its changes to the room while it is shown
+	// While the room is shown: arrow keys steer this player's stickman.
+	bool RoomStickmanKey(int key, bool pressed);
+	int roomStickmanComm = 0, roomStickmanPcomm = 0;
 	void EndRoom(String why);
 	// Credentials of the latest join, offered again by the dialog (never saved).
 	ByteString lastRoomToken, lastAdminToken;
@@ -251,6 +259,11 @@ public:
 	void JoinRoom(ByteString url, ByteString name, std::optional<ByteString> roomToken = std::nullopt,
 	              std::optional<ByteString> adminToken = std::nullopt);
 	void LeaveRoom();
+	// While the room is shown: the room's own reset (admin), true if handled there.
+	// air, pressure, velocity, sparks, ambientHeat, temperature or invertAir.
+	bool RoomReset(ByteString what);
+	// While the room is shown: a console command resolved into a room command (admin).
+	void RoomConsole(const Json::Value &command);
 	// The in-game dialog (Ctrl+Shift+J): join a room, or leave the current one.
 	void OpenRoomDialog();
 	// Switch between the room's world and the player's own (the room stays connected).

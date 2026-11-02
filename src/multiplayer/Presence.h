@@ -14,6 +14,7 @@ inline Json::Value PresencePlayers(const Json::Value &message)
         if (!p["player"].isUInt() || !p["player"].asUInt() || !ids.insert(p["player"].asUInt()).second ||
             !p["name"].isString() || p["name"].asString().empty() || p["name"].asString().size() > 32 ||
             !p["admin"].isBool() || !p["visible"].isBool()) throw std::runtime_error("invalid player presence");
+        if (p.isMember("stickman")) Integer(p, "stickman", 0, 4);
         auto name = p["name"].asString();
         for (auto &c : name) if (static_cast<unsigned char>(c) < 32 || c == 127) c = '?';
         p["name"] = name;

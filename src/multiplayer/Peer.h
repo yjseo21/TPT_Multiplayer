@@ -72,6 +72,10 @@ struct Peer
     std::atomic<unsigned> pending{0};
     std::atomic<uint64_t> bytesSent{0};
     std::atomic<unsigned> view{0};
+    std::atomic<int> stickmanSlot{0}; // 1-4: which room stickman this player steers
+    // A save being uploaded for a paste (receive callback only): id and base64 so far.
+    uint64_t pasteId = 0;
+    std::string pasteSave;
     std::atomic<uint64_t> framesSent{0}, fullFrames{0}, deltaFrames{0}, repeats{0}, webpFrames{0};
     uint64_t lastSequence = 0; // Owned by this connection's receive callback.
     uint32_t id;
