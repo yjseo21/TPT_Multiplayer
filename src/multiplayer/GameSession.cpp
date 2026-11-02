@@ -116,6 +116,15 @@ std::string GameSession::Status()
     std::string status = sample["status"].asString();
     if (status == "TOO SLOW")
         status = "TOO SLOW FOR THIS ROOM (behind for " + std::to_string(int(sample["behindSeconds"].asDouble())) + " s)";
+    else if (status == "CATCHING UP")
+        status = "CATCHING UP (" + std::to_string(int(sample["catchUpSeconds"].asDouble() + .5)) + " s to go)";
+    else if (status == "SYNCHRONIZING" && sample["downloadBytes"].asUInt64())
+    {
+        // The world arrives as one snapshot; on a slow link that takes a while.
+        auto mb = [](uint64_t bytes) { auto tenths = (bytes + 50000) / 100000; return std::to_string(tenths / 10) + "." + std::to_string(tenths % 10); };
+        auto done = sample["downloadedBytes"].asUInt64(), all = sample["downloadBytes"].asUInt64();
+        status = "DOWNLOADING THE ROOM " + std::to_string(done * 100 / all) + "% (" + mb(done) + " of " + mb(all) + " MB)";
+    }
     std::string line = "Room " + session.Options().url + " | " + status;
     unsigned players = session.Players().size();
     if (players) line += " | " + std::to_string(players) + (players == 1 ? " player" : " players");

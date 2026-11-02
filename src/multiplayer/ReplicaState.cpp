@@ -36,7 +36,7 @@ void ReplicaState::OnJson(const Json::Value &v)
         if (!welcomed || checkpointPending || ready)
             throw std::runtime_error("unexpected replica checkpoint start");
         checkpointId = Required64(v,"id");
-        auto size = Required64(v,"bytes");
+        auto size = Required64(v,"bytes"); checkpointBytes = size;
         checkpointTick = Required64(v,"tick");
         checkpointRevision = Required64(v,"revision");
         checkpointReset = Required64(v,"resetGeneration");

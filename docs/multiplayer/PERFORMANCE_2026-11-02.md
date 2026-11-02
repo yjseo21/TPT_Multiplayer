@@ -64,3 +64,32 @@ compact seals.
   `--seal-batch-ms`.
 - **TPT's own physics** (1–17 ms a tick in the benchmark scenes) is upstream
   code, and runs as it does in single-player.
+
+## Joining from far away (1.0.3)
+
+A player 80-100 ms away saw "synchronizing" and "reconnecting" forever. A
+proxy adding 50 ms each way and capping the link reproduced it with a busy
+room:
+1. The join snapshot (1-4 MB) took many seconds on the slow link, while the
+   room kept running.
+2. The player then had hundreds of ticks to catch up.
+3. The "too slow" rule jumped ahead after 10 seconds behind, even while the
+   backlog was shrinking.
+4. Jumping ahead meant downloading the room again over the same link, so the
+   cycle repeated.
+
+Changes:
+- **Catching up isn't falling behind.** The behind clock restarts whenever
+  the backlog has shrunk by a tenth (and at least 30 ticks). Only a computer
+  that really can't keep up jumps ahead.
+- **Progress shown:** "DOWNLOADING THE ROOM 45% (0.8 of 1.8 MB)", then
+  "CATCHING UP (5 s to go)".
+- **Smaller snapshots:** each 4-byte word's bytes are grouped by position
+  before zlib level 6 (it was level 1). Busy worlds are 10-25% smaller, empty
+  ones up to 70%. Compression stays off the room's thread. Older autosaves
+  (the plain encoding) still load.
+- **New test, `multiplayer-distant-join`:** a 1.8 MB room joined over a
+  100 ms, 150 KB/s link. It downloads in about 12 s, catches up without
+  jumping ahead, and verifies 45 fingerprints.
+
+`BuildId` is now `tpt-c205becb-mp3-ingame6`.

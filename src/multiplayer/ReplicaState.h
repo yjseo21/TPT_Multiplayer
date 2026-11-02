@@ -34,6 +34,7 @@ class ReplicaState
     uint64_t checkpointId = 0, checkpointTick = 0, checkpointRevision = 0;
     uint64_t checkpointReset = 0, previousEventId = 0;
     bool checkpointPaused = false, checkpointPending = false;
+    uint64_t checkpointBytes = 0;
     bool welcomed = false, ready = false, paced = false;
     uint64_t seals = 0, edits = 0, checks = 0, sealedTick = 0;
     std::deque<Json::Value> queued;
@@ -51,6 +52,9 @@ public:
     // Physics ticks the server has sealed that this world has not yet run.
     uint64_t Backlog() const { return ready && sealedTick > world.tick ? sealedTick-world.tick : 0; }
     bool Ready() const { return ready; }
+    // The world snapshot being downloaded: bytes so far and in all (0 when none).
+    uint64_t DownloadedBytes() const { return checkpointPending ? incoming.Received() : 0; }
+    uint64_t DownloadBytes() const { return checkpointPending ? checkpointBytes : 0; }
     uint64_t Seals() const { return seals; }
     uint64_t Edits() const { return edits; }
     uint64_t Checks() const { return checks; }

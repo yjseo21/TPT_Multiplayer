@@ -226,7 +226,7 @@ void Session::Lost()
         mailbox->packets.clear(); mailbox->messages.clear(); mailbox->ordered.clear();
         mailbox->incomingBytes = 0; mailbox->disconnected = mailbox->permanentFailure = false;
     }
-    RetireReplica(); desyncWaitUntil = 0; behindSince = 0; behindSeconds = 0;
+    RetireReplica(); desyncWaitUntil = 0; behindSince = 0; behindSeconds = 0; catchingUp = 0;
     edits.Disconnect(); sentAt.clear();
     ready = admin = roomLocked = waitingForKeyframe = false;
     canvas.id = 0; attempting = false;
@@ -406,8 +406,15 @@ void Session::Pump()
         // Behind: more than half a second of ticks past the margin. What counts is
         // how long it has been unable to catch up; rates measured across pauses
         // and frame steps say nothing about this computer's speed.
-        if (replica->Backlog() <= lead + 30) behindSince = 0;
-        else if (!behindSince) behindSince = now;
+        // Catching up is not falling behind: after a long join over a slow link
+        // the backlog starts large, and jumping ahead would only download the
+        // room again over the same link. The clock restarts whenever the
+        // backlog has shrunk by a tenth (and at least half a second of ticks).
+        auto behindBy = replica->Backlog();
+        if (behindBy <= lead + 30) behindSince = 0;
+        else if (!behindSince || behindBy + std::max<uint64_t>(behindBacklog / 10, 30) < behindBacklog)
+        { behindSince = now; behindBacklog = behindBy; }
+        catchingUp = behindBy > lead + 30 ? behindBy : 0;
         behindSeconds = behindSince ? now-behindSince : 0;
         if (!options.debugNoSkipAhead && behindSeconds > SkipAheadSeconds && now-lastSkipAhead > SkipAheadInterval)
         {
@@ -516,12 +523,22 @@ void Session::AddLocalStatus(Json::Value &out) const
             bool slow = !out["simHz"].isNull() && !replica->world.paused &&
                 out["simHz"].asDouble() < out["targetHz"].asDouble()*.85;
             bool tooSlow = behindSeconds > 3;
-            out["status"] = replica->world.paused ? "PAUSED" : tooSlow ? "TOO SLOW" : (slow ? "SERVER SLOW" : "LOCAL SIM");
+            out["status"] = replica->world.paused ? "PAUSED" : tooSlow ? "TOO SLOW" :
+                catchingUp ? "CATCHING UP" : (slow ? "SERVER SLOW" : "LOCAL SIM");
             out["behindSeconds"] = behindSeconds;
+            out["catchUpSeconds"] = catchingUp / std::max(tickRate, 1.0);
             out["paused"] = replica->world.paused;
         }
     }
-    else if (ready && status != "RECONNECTING") out["status"] = "SYNCHRONIZING";
+    else if (ready && status != "RECONNECTING")
+    {
+        out["status"] = "SYNCHRONIZING";
+        if (replica && replica->DownloadBytes())
+        {
+            out["downloadedBytes"] = Json::UInt64(replica->DownloadedBytes());
+            out["downloadBytes"] = Json::UInt64(replica->DownloadBytes());
+        }
+    }
 }
 Json::Value Session::Sample()
 {

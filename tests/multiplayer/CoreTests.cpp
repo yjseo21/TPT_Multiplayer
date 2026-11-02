@@ -506,7 +506,7 @@ int main()
                 paste["save"] = "not base64!";
                 Reject([&] { ParseCommand(paste, false); });
                 // Only game saves, and only ones that state a bounded unpacked size.
-                paste["save"] = Base64Encode(std::string("PSv        abc", 15));
+                paste["save"] = Base64Encode(std::string("PSv\0\0\0\0\0\x10\0\0\0abc", 15));
                 Reject([&] { ParseCommand(paste, false); });
                 auto oversized = std::string(data.data(), data.size());
                 oversized[8] = oversized[9] = oversized[10] = char(0xFF); oversized[11] = 0x7F;

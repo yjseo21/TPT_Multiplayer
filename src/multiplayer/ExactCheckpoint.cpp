@@ -25,6 +25,11 @@ namespace
 constexpr size_t MaxUncompressed = 128U * 1024 * 1024;
 constexpr size_t MaxPacket = 64U * 1024 * 1024;
 constexpr uint32_t FormatVersion = 1;
+// Packet encodings (the header's version word): 1 compresses the state as it
+// is; 2 first groups the bytes of every 4-byte word by position (all first
+// bytes, then all second bytes, ...), which compresses floats and integers
+// better. Both are read, so older autosaves still load.
+constexpr uint32_t PacketPlain = 1, PacketShuffled = 2;
 // The application must use the same engine build and simulation dimensions.
 constexpr char Magic[] = "TPTXCP1!";
 
@@ -317,19 +322,44 @@ std::string CaptureExactCheckpointRaw(World &w, std::string buffer)
     return std::move(writer.bytes);
 }
 
+namespace
+{
+std::string Shuffle(std::string_view raw)
+{
+    std::string out(raw.size(), '\0');
+    size_t words = raw.size() / 4;
+    for (size_t w = 0; w < words; ++w)
+        for (size_t b = 0; b < 4; ++b) out[b * words + w] = raw[w * 4 + b];
+    std::copy(raw.begin() + words * 4, raw.end(), out.begin() + words * 4);
+    return out;
+}
+std::string Unshuffle(std::string_view shuffled)
+{
+    std::string out(shuffled.size(), '\0');
+    size_t words = shuffled.size() / 4;
+    for (size_t w = 0; w < words; ++w)
+        for (size_t b = 0; b < 4; ++b) out[w * 4 + b] = shuffled[b * words + w];
+    std::copy(shuffled.begin() + words * 4, shuffled.end(), out.begin() + words * 4);
+    return out;
+}
+}
+
 std::string CompressExactCheckpointRaw(std::string_view raw)
 {
     if (raw.empty() || raw.size()>MaxUncompressed)
         throw std::runtime_error("invalid uncompressed checkpoint size");
-    uLongf bound=compressBound(uLong(raw.size()));
+    // Off the room's thread, so a stronger level costs the room nothing: a busy
+    // world is 10-25% smaller, which is that much less waiting on a slow link.
+    auto shuffled=Shuffle(raw);
+    uLongf bound=compressBound(uLong(shuffled.size()));
     std::string compressed(size_t(bound),'\0');
     int rc=compress2(reinterpret_cast<Bytef*>(compressed.data()), &bound,
-        reinterpret_cast<const Bytef*>(raw.data()), uLong(raw.size()),Z_BEST_SPEED);
+        reinterpret_cast<const Bytef*>(shuffled.data()), uLong(shuffled.size()),6);
     if (rc!=Z_OK) throw std::runtime_error("checkpoint compression failure");
     compressed.resize(size_t(bound));
     if (compressed.size()+20>MaxPacket) throw std::runtime_error("checkpoint exceeds packet limit");
     std::string packet(Magic,sizeof(Magic)-1);
-    Put32(packet,FormatVersion);
+    Put32(packet,PacketShuffled);
     Put32(packet,uint32_t(raw.size()));
     auto crc=crc32(0,reinterpret_cast<const Bytef*>(raw.data()),uInt(raw.size()));
     Put32(packet,uint32_t(crc));
@@ -345,8 +375,10 @@ std::string EncodeExactCheckpoint(World &w)
 void RestoreExactCheckpoint(World &w, std::string_view packet)
 {
     if (packet.size()<20 || packet.size()>MaxPacket ||
-        packet.substr(0,8)!=std::string_view(Magic,8) || Get32(packet,8)!=FormatVersion)
+        packet.substr(0,8)!=std::string_view(Magic,8) ||
+        (Get32(packet,8)!=PacketPlain && Get32(packet,8)!=PacketShuffled))
         throw std::runtime_error("unsupported exact checkpoint packet");
+    bool shuffled=Get32(packet,8)==PacketShuffled;
     uint32_t rawLength=Get32(packet,12), expectedCRC=Get32(packet,16);
     if (!rawLength || rawLength>MaxUncompressed)
         throw std::runtime_error("invalid exact checkpoint uncompressed length");
@@ -360,6 +392,7 @@ void RestoreExactCheckpoint(World &w, std::string_view packet)
     int rc=inflate(&zs,Z_FINISH);
     bool complete=rc==Z_STREAM_END && zs.total_out==rawLength && zs.avail_in==0;
     inflateEnd(&zs);
+    if (complete && shuffled) raw=Unshuffle(raw);
     if (!complete ||
         crc32(0,reinterpret_cast<const Bytef*>(raw.data()),uInt(raw.size()))!=expectedCRC)
         throw std::runtime_error("corrupt exact checkpoint compressed state or checksum");

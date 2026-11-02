@@ -121,6 +121,10 @@ test('multiplayer-slow-player', python3_prog,
   args: [files('../../tests/multiplayer/slow_player_test.py'), mp_server, mp_client],
   timeout: 90, is_parallel: false)
 
+test('multiplayer-distant-join', python3_prog,
+  args: [files('../../tests/multiplayer/distant_join_test.py'), mp_server, mp_client],
+  timeout: 120, is_parallel: false)
+
 # Lightweight determinism regression (no engine or network dependencies).
 mp_import_seed_tests = executable('tpt-import-seed-tests',
   '../../tests/multiplayer/import_seed_standalone.cpp',

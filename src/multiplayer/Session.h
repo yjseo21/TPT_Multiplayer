@@ -131,6 +131,7 @@ private:
     // A computer that cannot keep up: unable to catch up with the room for 3 s
     // ("TOO SLOW"); after 10 s, it jumps to the room's present.
     double behindSince = 0, lastSkipAhead = -100, behindSeconds = 0;
+    uint64_t behindBacklog = 0, catchingUp = 0; // backlog when the behind clock last restarted; ticks still to run
     uint64_t skipAheads = 0;
 
     // Own-edit latency: from Send() until the edit is applied to the local world.
