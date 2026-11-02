@@ -125,6 +125,7 @@ class Simulation : public RenderableSimulation
 {
 public:
 	GravityPtr grav;
+	bool deterministicGravity = false; // multiplayer rooms: Newtonian gravity identical on every machine
 	std::unique_ptr<Air> air;
 
 	RNG rng;

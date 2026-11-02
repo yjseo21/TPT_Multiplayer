@@ -4005,7 +4005,7 @@ void Simulation::EnableNewtonianGravity(bool enable)
 	}
 	if (!grav && enable)
 	{
-		grav = Gravity::Create();
+		grav = deterministicGravity ? Gravity::CreateDeterministic() : Gravity::Create();
 		auto oldGravIn = gravIn;
 		DispatchNewtonianGravity();
 		// gravIn is now potentially garbage, set it again

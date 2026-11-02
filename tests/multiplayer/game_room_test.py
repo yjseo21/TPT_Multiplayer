@@ -98,7 +98,7 @@ STEPS = [
     dict(at=10.9, do="edge"),      # void -> solid
     dict(at=10.9, do="aheat"),     # off -> on
     dict(at=10.92, do="options", gravityMode=3, customGravityX=0.5),  # the options dialog: custom
-    dict(at=10.95, do="newtonian"),  # refused, with a notice
+    dict(at=10.95, do="newtonian"),  # Newtonian gravity on, for everyone (room solver)
     # Administrator controls become room commands.
     dict(at=11.0, do="pause", paused=True),
     dict(at=11.5, do="signbutton"),  # paused: the spark is still there at the mark
@@ -176,11 +176,11 @@ def main():
             assert before["resyncs"] == 0 and before["verifiedHashes"] >= 3, before
             assert before["status"] == "PAUSED" and before["pendingEdits"] == 0, (before, output[-3000:])
             assert before["editLatencySamples"] >= 5, before
-            assert "not available in rooms" in before["lastNotice"], before["lastNotice"]
-            assert any("Newtonian gravity is not available" in r.get("lastNotice", "") for r in g), "Newtonian gravity was not refused"
+            assert any("not available in rooms" in r.get("lastNotice", "") for r in g), "no refused action was reported"
             # The room's settings changed for this player and (fingerprints verified, no
             # resync) for the watcher; the player's own world kept its own.
-            assert (before["gravityMode"], before["airMode"], before["edgeMode"], before["ambientHeat"], before["newtonianGravity"]) ==                 (3, 1, 1, True, False) and before["customGravityX"] == 0.5, before
+            settings = (before["gravityMode"], before["airMode"], before["edgeMode"], before["ambientHeat"], before["newtonianGravity"])
+            assert settings == (3, 1, 1, True, True) and before["customGravityX"] == 0.5, before
             assert before["ownGravityMode"] == 0, before
             assert final["gravityMode"] == 3 and final["edgeMode"] == 1, "a rejoined player gets the room's settings"
             assert final["ownParts"] > 0, "drawing on the own canvas did not reach the own world"

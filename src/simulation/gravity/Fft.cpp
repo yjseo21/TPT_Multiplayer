@@ -208,6 +208,11 @@ void GravityImpl::Init()
 
 void Gravity::Exchange(GravityOutput &gravOut, GravityInput &gravIn, bool forceRecalc)
 {
+	if (deterministic)
+	{
+		ExchangeDeterministic(gravOut, gravIn, forceRecalc);
+		return;
+	}
 	auto *fftGravity = static_cast<GravityImpl *>(this);
 
 	// lazy init
@@ -247,5 +252,10 @@ GravityPtr Gravity::Create()
 
 void GravityDeleter::operator ()(Gravity *ptr) const
 {
+	if (ptr->deterministic)
+	{
+		Gravity::DestroyDeterministic(ptr);
+		return;
+	}
 	delete static_cast<GravityImpl *>(ptr);
 }

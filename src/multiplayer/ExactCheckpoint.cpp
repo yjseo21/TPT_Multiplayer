@@ -3,6 +3,7 @@
 #include "simulation/Simulation.h"
 #include "simulation/Air.h"
 #include "simulation/Sign.h"
+#include "simulation/gravity/Gravity.h"
 #include <zlib.h>
 #include <algorithm>
 #include <array>
@@ -195,8 +196,8 @@ template<class A> void SignFields(A &a, std::vector<sign> &signs)
 template<class A> void State(A &a, World &w)
 {
     Simulation &s=*w.sim;
-    if (s.grav || s.useLuaCallbacks || s.frameTime)
-        throw std::runtime_error("exact checkpoint requires gravity-disabled, callback-free, quiescent simulation");
+    if ((s.grav && !s.deterministicGravity) || s.useLuaCallbacks || s.frameTime)
+        throw std::runtime_error("exact checkpoint requires room gravity, callback-free, quiescent simulation");
     uint32_t xres=XRES,yres=YRES,capacity=NPART,channels=CHANNELS, version=FormatVersion;
     Field(a,version); Field(a,xres); Field(a,yres); Field(a,capacity); Field(a,channels);
     uint32_t buildLength=uint32_t(std::string_view(BuildId).size());
@@ -236,6 +237,16 @@ template<class A> void State(A &a, World &w)
         Field(a,s.gravOut.forceX[pos]); Field(a,s.gravOut.forceY[pos]);
     }
     Field(a,s.gravForceRecalc);
+    // Newtonian gravity: on or off. Its solver holds no state beyond a shortcut
+    // (same input, same output), so the maps above are all there is to restore;
+    // the solver is attached without recomputing them.
+    bool gravityOn = bool(s.grav);
+    Field(a,gravityOn);
+    if constexpr (A::Reading)
+    {
+        if (gravityOn && !s.grav) { s.deterministicGravity = true; s.grav = Gravity::CreateDeterministic(); }
+        else if (!gravityOn) s.grav.reset();
+    }
     Field(a,s.portalp); Field(a,s.wireless);
     Field(a,s.player); Field(a,s.player2); Field(a,s.fighters);
     Field(a,s.elementCount); Field(a,s.ISWIRE);

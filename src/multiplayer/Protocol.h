@@ -20,7 +20,7 @@ constexpr size_t MaxPasteChunkChars = 3000;
 // Ordered server messages (commits) may carry a paste.
 constexpr size_t MaxOrderedBytes = 320 * 1024;
 // Bump with any change to the engine, serializer, or enabled elements.
-constexpr const char *BuildId = "tpt-c205becb-mp3-ingame3";
+constexpr const char *BuildId = "tpt-c205becb-mp3-ingame4";
 
 struct Frame
 {

@@ -1,5 +1,6 @@
 #include "World.h"
 #include "ExactCheckpoint.h"
+#include "simulation/gravity/Gravity.h"
 #include "Canvas.h"
 #include "simulation/SimulationData.h"
 #include "simulation/ElementClasses.h"
@@ -81,6 +82,22 @@ int main()
             compressMs += std::chrono::duration<double, std::milli>(Clock::now()-begin).count();
             rawBytes = raw.size(); packetBytes = packet.size();
             reused = std::move(raw);
+        }
+        // Room gravity: a full solve per tick (the mass moves every tick).
+        {
+            auto gravity = Gravity::CreateDeterministic();
+            GravityInput in;
+            GravityOutput out;
+            constexpr int solves = 20;
+            double solveMs = 0;
+            for (int i = 0; i < solves; ++i)
+            {
+                in.mass[{ (i * 7) % CELLS.X, (i * 3) % CELLS.Y }] += 1.f;
+                auto begin = Clock::now();
+                gravity->Exchange(out, in, false);
+                solveMs += std::chrono::duration<double, std::milli>(Clock::now()-begin).count();
+            }
+            std::cout << "  room gravity: solve_ms=" << solveMs/solves << std::endl;
         }
         std::cout << "  snapshot: capture_ms=" << captureMs/captures << " compress_ms=" << compressMs/captures
             << " raw_bytes=" << rawBytes << " packet_bytes=" << packetBytes << std::endl;

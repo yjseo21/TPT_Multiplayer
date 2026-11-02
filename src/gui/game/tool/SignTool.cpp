@@ -48,7 +48,11 @@ public:
 		if(!signMoving)
 			ui::Window::DoKeyRelease(key, scan, repeat, shift, ctrl, alt);
 	}
-	virtual ~SignWindow() {}
+	virtual ~SignWindow()
+	{
+		if (tool->window == this)
+			tool->window = nullptr;
+	}
 	void OnTryExit(ui::Window::ExitMethod method) override;
 };
 
@@ -61,6 +65,7 @@ SignWindow::SignWindow(SignTool * tool_, Simulation * sim_, int signID_, ui::Poi
 	signID(signID_),
 	signPosition(position_)
 {
+	tool->window = this;
 	ui::Label * messageLabel = new ui::Label(ui::Point(4, 5), ui::Point(Size.X-8, 15), "New sign");
 	messageLabel->SetTextColour(style::Colour::InformationTitle);
 	messageLabel->Appearance.HorizontalAlign = ui::Appearance::AlignLeft;
@@ -253,6 +258,16 @@ void SignWindow::OnDraw()
 
 	g->DrawFilledRect(RectSized(Position - Vec2{ 1, 1 }, Size + Vec2{ 2, 2 }), 0x000000_rgb);
 	g->DrawRect(RectSized(Position, Size), 0xC8C8C8_rgb);
+}
+
+void SignTool::CloseWindow()
+{
+	// Never called from the window's own handlers: it can be deleted at once.
+	if (auto *open = window)
+	{
+		open->CloseActiveWindow();
+		delete open;
+	}
 }
 
 std::unique_ptr<VideoBuffer> SignTool::GetIcon(int toolID, Vec2<int> size)

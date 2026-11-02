@@ -1206,7 +1206,8 @@ void GameModel::SetNewtonianGravity(bool newtonainGravity)
 {
 	if (ShowingRoom())
 	{
-		ChangeRoomSettings({ .newtonianGravity = newtonainGravity }); // refused, with a notice
+		if (ChangeRoomSettings({ .newtonianGravity = newtonainGravity }))
+			SetInfoTip(newtonainGravity ? String("Newtonian Gravity: On") : String("Newtonian Gravity: Off"));
 		return;
 	}
 	sim->EnableNewtonianGravity(newtonainGravity);
@@ -1223,7 +1224,7 @@ void GameModel::SetNewtonianGravity(bool newtonainGravity)
 
 bool GameModel::GetNewtonianGrvity()
 {
-    return bool(GetSimulation()->grav);
+    return requestedRoomSettings.newtonianGravity.value_or(bool(GetSimulation()->grav));
 }
 
 void GameModel::ShowGravityGrid(bool showGrid)

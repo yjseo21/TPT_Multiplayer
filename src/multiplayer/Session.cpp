@@ -24,7 +24,7 @@ std::string Env(const char *name) { auto p = std::getenv(name); return p ? p : "
 #endif
 namespace
 {
-// Local physics per frame while catching up, so a frame stays responsive.
+// Local physics per frame while catching up, at the least (see Pump), so a frame stays responsive.
 constexpr double CatchUpBudget = .012;
 // Unable to catch up for this long, a computer jumps to the room's present;
 // at most this often, so a merely busy moment never causes repeated rejoins.
@@ -384,9 +384,12 @@ void Session::Pump()
         // extra tick per frame, so the edit shows as soon as its tick is sealed.
         // Bounded: a heavy world never runs more than two steps in one frame.
         if (!sentAt.empty() && steps < backlog) steps = std::min<uint64_t>(backlog, std::max<uint64_t>(steps, 2));
-        // At most CatchUpBudget of local physics per frame (always one tick when
-        // due): a slow computer stays responsive and falls behind visibly,
-        // instead of freezing ever longer on catch-up.
+        // Local physics per frame: at most three quarters of the time since the
+        // last frame (at least CatchUpBudget, and always one tick when due). A
+        // computer that cannot keep up stays responsive and falls behind visibly
+        // instead of freezing ever longer on catch-up; one that merely draws few
+        // frames a second still keeps up.
+        auto budget = std::max(CatchUpBudget, .75*dt);
         uint64_t ran = 0;
         if (!steps) replica->Pump(0); // edits and seals at the current tick
         while (ran < steps)
@@ -395,7 +398,7 @@ void Session::Pump()
             auto stepped = replica->Pump(1);
             if (!stepped) break;
             ran += stepped;
-            if (MonotonicSeconds()-now > CatchUpBudget) break;
+            if (MonotonicSeconds()-now > budget) break;
         }
         tickCredit = std::max(tickCredit-double(ran), -1.0);
         if (ran == backlog) tickCredit = std::min(tickCredit, 1.0);

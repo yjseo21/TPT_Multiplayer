@@ -96,7 +96,20 @@ with tempfile.TemporaryDirectory(prefix="tpt-admin-") as tmp:
         assert result.returncode == 0, result.stdout + result.stderr
         last = json.loads((folder / "client.jsonl").read_text().splitlines()[-1])
         assert not last["roomLocked"] and last["pendingEdits"] == 0
-        print("PASS: admin permission, locks, admin bypass, removals, sequence rejection, unchanged physics and native CLI")
+
+        # Guessing the room password: after 5 wrong tries in a minute, even the right one waits.
+        for attempt in range(6):
+            guess = fixture["WS"](port)
+            guess.send(dict(type="hello", protocol=3, build=fixture["BUILD"], token=f"guess-{attempt}", name="Guesser"))
+            reason = until(guess, "close")
+            guess.close()
+            assert ("too many wrong passwords" in reason) == (attempt == 5), (attempt, reason)
+        right = fixture["WS"](port)
+        right.send(dict(type="hello", protocol=3, build=fixture["BUILD"], token="room-test", name="Guesser"))
+        assert "too many wrong passwords" in until(right, "close")
+        right.close()
+        print("PASS: admin permission, locks, admin bypass, removals, sequence rejection, unchanged physics, native CLI "
+              "and password guessing limits")
     finally:
         for ws in clients:
             ws.close()

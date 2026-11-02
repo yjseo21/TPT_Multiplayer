@@ -2056,12 +2056,6 @@ bool GameController::RoomTool(int toolSelection, const char *action, ui::Point a
 	if (!activeTool)
 		return true;
 	gameModel->SetLastTool(activeTool);
-	auto brushID = gameModel->GetBrushID();
-	if (brushID >= NUM_DEFAULTBRUSHES)
-	{
-		RoomNotice("Custom brushes are not available in rooms yet.");
-		return true;
-	}
 	if (activeTool->Identifier == "DEFAULT_UI_SAMPLE" || activeTool->Identifier == "DEFAULT_UI_SIGN")
 		return false; // sampling reads the shown world; the sign window sends its own changes
 	if (activeTool->Identifier == "DEFAULT_PT_STKM" || activeTool->Identifier == "DEFAULT_PT_STKM2")
@@ -2070,6 +2064,12 @@ bool GameController::RoomTool(int toolSelection, const char *action, ui::Point a
 		std::string why;
 		if ((!strcmp(action, "point") || !strcmp(action, "click")) && !room->SpawnStickman(b.X, b.Y, why))
 			RoomNotice(ByteString(why).FromUtf8());
+		return true;
+	}
+	auto brushID = gameModel->GetBrushID();
+	if (brushID >= NUM_DEFAULTBRUSHES)
+	{
+		RoomNotice("Custom brushes are not available in rooms yet.");
 		return true;
 	}
 	multiplayer::ToolStroke stroke;
@@ -2159,11 +2159,6 @@ void GameController::JoinRoom(ByteString url, ByteString name, std::optional<Byt
 	// The options dialog, quick options and mode shortcuts change the room's
 	// settings while it is shown.
 	gameModel->roomSettings = [this](const SimulationSettingsChange &change) {
-		if (change.newtonianGravity.value_or(false))
-		{
-			RoomNotice("Newtonian gravity is not available in rooms yet. Ctrl+Shift+M switches to your own canvas.");
-			return false;
-		}
 		std::string why;
 		if (!room || !room->ChangeSettings(change, why))
 		{
@@ -2199,6 +2194,8 @@ void GameController::JoinRoom(ByteString url, ByteString name, std::optional<Byt
 void GameController::EndRoom(String why)
 {
 #ifdef TPT_GAME_MULTIPLAYER
+	if (showRoom)
+		CloseRoomSignWindow(); // before the world it shows goes away
 	room.reset();
 	if (showRoom)
 	{
@@ -2275,6 +2272,8 @@ void GameController::UpdateRoom()
 		return;
 	}
 	StringBuilder status;
+	if (changed)
+		CloseRoomSignWindow(); // it shows the world the room just replaced
 	if (showRoom)
 	{
 		gameModel->ShowSimulation(room->Shown(), room->Paused());
@@ -2315,6 +2314,12 @@ void GameController::UpdateRoom()
 	UpdateRoomSigns();
 	RunRoomAutomation();
 #endif
+}
+
+void GameController::CloseRoomSignWindow()
+{
+	if (auto *signTool = static_cast<SignTool *>(gameModel->GetToolFromIdentifier("DEFAULT_UI_SIGN")); signTool && signTool->roomChange)
+		signTool->CloseWindow();
 }
 
 void GameController::UpdateRoomSigns()

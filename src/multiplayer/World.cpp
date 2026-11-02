@@ -16,7 +16,10 @@
 
 namespace multiplayer
 {
-World::World() : sim(Simulation::Factory()) {}
+World::World() : sim(Simulation::Factory())
+{
+    sim->deterministicGravity = true;
+}
 // Room stickmen: slot 1 is STKM, slot 2 STKM2, slots 3 and 4 are fighters
 // steered by their player instead of their AI.
 playerst *RoomStickman(Simulation &sim, int slot)
@@ -60,7 +63,7 @@ void ApplyConsole(Simulation &sim, const Command &c)
             for (int i = 0; i < NPART; ++i)
                 if (sim.parts[i].type && (c.selector == "all" || sim.parts[i].type == c.element)) change.Set(&sim, i);
     }
-    else if (c.cmd == "create") sim.create_part(-1, c.x1, c.y1, TYP(c.element), ID(c.element));
+    else if (c.cmd == "create") sim.create_part(-1, c.x1, c.y1, TYP(c.element), ID(c.element) ? ID(c.element) : -1); // as the console: -1 is "no value"
     else if (c.cmd == "delete")
     {
         if (c.index >= 0) sim.kill_part(c.index);
@@ -129,12 +132,11 @@ void ApplyReset(Simulation &sim, const std::string &what)
 }
 void ApplySettings(Simulation &sim, const SimulationSettingsChange &s)
 {
-    // Newtonian gravity runs on a worker thread whose timing differs between
-    // machines; it is refused when parsed and never reaches here.
     if (s.heat) sim.legacy_enable = !*s.heat;
     if (s.ambientHeat) sim.aheat_enable = *s.ambientHeat;
     if (s.waterEqualisation) sim.water_equal_test = *s.waterEqualisation;
     if (s.prettyPowder) sim.pretty_powder = *s.prettyPowder;
+    if (s.newtonianGravity) sim.EnableNewtonianGravity(*s.newtonianGravity);
     if (s.airMode) sim.air->airMode = *s.airMode;
     if (s.edgeMode) sim.SetEdgeMode(*s.edgeMode);
     if (s.convectionMode) sim.air->convectionMode = *s.convectionMode;
@@ -218,8 +220,6 @@ void World::Load(const std::string &path)
     std::vector<char> bytes;
     if (!Platform::ReadFile(bytes, path)) throw std::runtime_error("cannot read world file");
     GameSave save(bytes, false);
-    // Newtonian gravity is not deterministic across machines yet.
-    if (save.gravityEnable) throw std::runtime_error("this save uses Newtonian gravity, which rooms do not support yet; turn it off and save again");
     sim->clear_sim();
     ++resetGeneration;
     // The standard file may omit RNG state. Force a deterministic initial
@@ -231,6 +231,7 @@ void World::Load(const std::string &path)
     sim->air->vorticityCoeff = save.vorticityCoeff; sim->air->convectionMode = save.convectionMode;
     sim->edgeMode = save.edgeMode; sim->legacy_enable = save.legacyEnable;
     sim->water_equal_test = save.waterEEnabled; sim->aheat_enable = save.aheatEnable;
+    sim->EnableNewtonianGravity(save.gravityEnable);
     sim->Load(&save, true, {0, 0});
     sim->frameCount = save.frameCount;
     if (save.hasRngState) sim->rng.state(save.rngState);

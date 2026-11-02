@@ -15,12 +15,20 @@
 #include "client/GameSave.h"
 #include "common/platform/Platform.h"
 #include "simulation/Air.h"
+#include "simulation/gravity/Gravity.h"
+#include "multiplayer/ExactCheckpoint.h"
+#include "multiplayer/FloatingPoint.h"
+#include <bit>
 #include <functional>
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
 
 using namespace multiplayer;
+// Room gravity's forces for the test input below, as computed on Linux x86-64 (GCC).
+// Every platform must match it exactly; a mismatch means the solver's arithmetic
+// is not reproducible there.
+constexpr uint64_t ExpectedGravityDigest = 2792519806613943772ULL;
 void Check(bool ok, const char *message) { if (!ok) throw std::runtime_error(message); }
 void Reject(std::function<void()> action)
 {
@@ -341,7 +349,7 @@ int main()
                   w.sim->bmap[0][0] == WL_WALL && w.sim->air->airMode == AIR_VELOCITYOFF && w.sim->aheat_enable &&
                   w.sim->pretty_powder && !w.sim->legacy_enable, "settings apply like the options dialog");
             for (auto bad : { R"({"gravityMode":4})", R"({"edgeMode":-1})", R"({"ambientAirTemp":100000})",
-                              R"({"customGravityX":"1"})", R"({"heat":1})", R"({"newtonianGravity":true})", R"({"warp":1})", R"({})" })
+                              R"({"customGravityX":"1"})", R"({"heat":1})", R"({"newtonianGravity":1})", R"({"warp":1})", R"({})" })
             {
                 auto invalid = ParseJson(R"({"seq":4,"op":"settings"})");
                 invalid["settings"] = ParseJson(bad);
@@ -349,15 +357,56 @@ int main()
             }
             settings["settings"] = ParseJson(R"({"newtonianGravity":false,"heat":false})");
             w.Apply(ParseCommand(settings, true));
-            Check(w.sim->legacy_enable && !w.sim->grav, "turning Newtonian gravity off is accepted and changes nothing");
-            // Saves with Newtonian gravity cannot become rooms (its worker thread is not deterministic).
+            Check(w.sim->legacy_enable && !w.sim->grav, "turning Newtonian gravity off when it is off changes nothing");
+            settings["settings"] = ParseJson(R"({"newtonianGravity":true})");
+            w.Apply(ParseCommand(settings, true));
+            Check(w.sim->grav && w.sim->deterministicGravity, "rooms turn Newtonian gravity on with their own solver");
+            // Saves with Newtonian gravity become rooms with it on.
             auto save = w.CaptureSave(); save->gravityEnable = true;
             auto [missing, data] = save->Serialise();
             Check(!missing && Platform::WriteFile(data, "newtonian-test.cps"), "write a Newtonian gravity save");
-            auto before = w.resetGeneration;
-            Reject([&] { w.Load("newtonian-test.cps"); });
-            Check(w.resetGeneration == before && w.sim->gravityMode == GRAV_CUSTOM, "a refused save leaves the room's world alone");
+            World loaded;
+            loaded.Load("newtonian-test.cps");
+            Check(loaded.sim->grav && loaded.sim->gravityMode == GRAV_CUSTOM, "a Newtonian gravity save loads into a room");
             Platform::RemoveFile("newtonian-test.cps");
+        }
+        {
+            // Room gravity solver: pulls towards mass, and gives these exact bits on
+            // every compiler and CPU (CI builds GCC, MSVC and Apple clang, x86-64 and ARM).
+            auto gravity = Gravity::CreateDeterministic();
+            GravityInput in;
+            GravityOutput out;
+            in.mass[{ 76, 48 }] = 50.f; in.mass[{ 20, 10 }] = 3.25f; in.mass[{ 140, 90 }] = -7.5f;
+            for (int x = 30; x < 60; ++x) in.mass[{ x, 70 }] = 0.125f * (x % 7);
+            for (int y = 0; y < 40; ++y) in.mask[{ 110, y }] = 0; // a gravity wall column
+            MatchGameFloatingPoint();
+            gravity->Exchange(out, in, true);
+            Check(out.forceX[{ 86, 48 }] < 0 && out.forceX[{ 66, 48 }] > 0 && out.forceY[{ 76, 58 }] < 0 && out.forceY[{ 76, 38 }] > 0,
+                "Newtonian gravity pulls towards mass");
+            Check(out.forceX[{ 110, 5 }] == 0 && out.forceY[{ 110, 5 }] == 0, "gravity walls have no field");
+            uint64_t digest = 1469598103934665603ULL;
+            for (auto p : CELLS.OriginRect())
+                for (float f : { out.forceX[p], out.forceY[p] })
+                    for (int b = 0; b < 4; ++b) { digest ^= (std::bit_cast<uint32_t>(f) >> (8 * b)) & 255; digest *= 1099511628211ULL; }
+            if (digest != ExpectedGravityDigest)
+                throw std::runtime_error("room gravity differs on this platform: digest " + std::to_string(digest));
+            GravityOutput again;
+            gravity->Exchange(again, in, false); // unchanged input: a shortcut, same forces
+            Check(again.forceX[{ 1, 1 }] == 0, "an unchanged input is not recomputed into a fresh output");
+
+            // A room with gravity: a snapshot restores it exactly, and both copies stay identical.
+            World a;
+            a.sim->rng.seed(99);
+            a.sim->EnableNewtonianGravity(true);
+            for (int i = 0; i < 400; ++i) a.sim->create_part(-1, 150 + i % 40, 100 + i / 40, PT_DUST);
+            for (int i = 0; i < 25; ++i) a.sim->create_part(-1, 400 + i % 5, 200 + i / 5, PT_SING);
+            a.sim->BeforeSim(false);
+            for (int t = 0; t < 30; ++t) a.Advance();
+            World b;
+            RestoreExactCheckpoint(b, EncodeExactCheckpoint(a));
+            Check(b.sim->grav && DiagnosticDigests(a) == DiagnosticDigests(b), "a snapshot carries room gravity exactly");
+            for (int t = 0; t < 60; ++t) { a.Advance(); b.Advance(); }
+            Check(DiagnosticDigests(a) == DiagnosticDigests(b), "both copies of a room with gravity stay identical");
         }
         {
             // Room stickmen: one per player slot; slots 3-4 are fighters steered like stickmen.
@@ -474,7 +523,7 @@ int main()
         Check(edits.Begin() == 1, "new connection starts a fresh sequence space");
         edits.Acknowledge(1); edits.Disconnect();
         Check(edits.Uncertain() == 1 && edits.Pending() == 0, "acknowledged edits are never replayed or counted uncertain");
-        std::cout << "Core tests passed: physics, paused editing, state and canvas codecs, resync, views, bandwidth budget, malformed input, permissions, room settings.\n";
+        std::cout << "Core tests passed: physics, paused editing, state and canvas codecs, resync, views, bandwidth budget, malformed input, permissions, room settings, room gravity.\n";
         return 0;
     }
     catch (const std::exception &e) { std::cerr << e.what() << '\n'; return 1; }

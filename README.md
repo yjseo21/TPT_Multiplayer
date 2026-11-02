@@ -1,6 +1,10 @@
 The Powder Toy - June 2026
 ==========================
 
+> **This is TPT Multiplayer**, a fork that lets up to four players share a world
+> on a dedicated server, using the normal game. See
+> [README.multiplayer.md](README.multiplayer.md) to play, host or build it.
+
 Get the latest version [from the Powder Toy website](https://powdertoy.co.uk/Download.html). We're also on [Steam](https://store.steampowered.com/app/1148350/The_Powder_Toy/).
 
 To use online features such as saving, you need to [register an account](https://powdertoy.co.uk/Register.html).

@@ -2,7 +2,7 @@
 
 **Engineering handoff, 2 November 2026.** This closes phases P4 and P5 of
 `IN_GAME_MULTIPLAYER_PLAN.md`, except for Newtonian gravity.
-Build ID: `tpt-c205becb-mp3-ingame3`.
+Build ID: `tpt-c205becb-mp3-ingame3` (now `-ingame4`, with Newtonian gravity in snapshots).
 
 ## Who may change what
 

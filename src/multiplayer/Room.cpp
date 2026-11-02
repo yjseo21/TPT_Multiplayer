@@ -41,12 +41,13 @@ void Room::RememberDigest(uint64_t tick, uint64_t revision, const Json::Value &f
     recentDigests.push_back({tick, revision, fields});
     while (recentDigests.size() > 32) recentDigests.pop_front();
 }
-void Room::Accept(std::weak_ptr<ix::WebSocket> weak)
+void Room::Accept(std::weak_ptr<ix::WebSocket> weak, std::string address)
 {
     std::shared_ptr<Peer> p;
     {
         std::lock_guard lock(peersMutex);
         p = std::make_shared<Peer>(weak, nextPlayer++, upload, config.updates); peers.push_back(p);
+        p->address = std::move(address);
     }
     p->Start();
     auto ws = weak.lock();
@@ -113,15 +114,51 @@ void Room::PasteChunk(const std::shared_ptr<Peer> &p, const Json::Value &v)
     p->operations -= 1;
     p->pasteSave += v["data"].asString();
 }
+namespace
+{
+// Same time whatever the input: comparing passwords leaks nothing about them.
+bool SameSecret(const std::string &given, const std::string &expected)
+{
+    unsigned char difference = given.size() != expected.size();
+    for (size_t i = 0; i < given.size(); ++i)
+        difference |= uint8_t(given[i]) ^ uint8_t(expected.empty() ? 0 : expected[i % expected.size()]);
+    return !difference;
+}
+}
+bool Room::AuthBlocked(const std::string &address)
+{
+    std::lock_guard lock(authMutex);
+    auto &failures = authFailures[address];
+    while (!failures.empty() && MonotonicSeconds() - failures.front() > 60) failures.pop_front();
+    if (failures.empty()) authFailures.erase(address);
+    else if (failures.size() >= 5) return true;
+    if (authFailures.size() > 4096) authFailures.clear(); // bounded memory under a flood
+    return false;
+}
+void Room::AuthFailed(const std::string &address)
+{
+    std::lock_guard lock(authMutex);
+    authFailures[address].push_back(MonotonicSeconds());
+}
 void Room::Hello(const std::shared_ptr<Peer> &p, const Json::Value &v)
 {
     if (v["type"] != "hello" || !v["protocol"].isUInt() || v["protocol"].asUInt() != ProtocolVersion || v["build"] != BuildId)
         throw std::runtime_error("incompatible protocol or build");
-    if (!v["token"].isString() || v["token"].asString() != config.roomToken)
+    if (AuthBlocked(p->address))
+        throw std::runtime_error("too many wrong passwords from this address; wait a minute");
+    if (!v["token"].isString() || !SameSecret(v["token"].asString(), config.roomToken))
+    {
+        AuthFailed(p->address);
         throw std::runtime_error("invalid room credential");
+    }
     if (!v["name"].isString() || v["name"].asString().empty() || v["name"].asString().size() > 32)
         throw std::runtime_error("name must contain 1-32 bytes");
-    bool isAdmin = !config.adminToken.empty() && v["adminToken"].isString() && v["adminToken"].asString() == config.adminToken;
+    bool isAdmin = !config.adminToken.empty() && v["adminToken"].isString() && SameSecret(v["adminToken"].asString(), config.adminToken);
+    if (!isAdmin && v["adminToken"].isString() && !v["adminToken"].asString().empty())
+    {
+        // A wrong admin key is a failed guess too; the player joins without admin rights.
+        AuthFailed(p->address);
+    }
     std::lock_guard lock(peersMutex);
     if (roomLocked && !isAdmin) throw std::runtime_error("room locked by administrator");
     auto active = std::count_if(peers.begin(), peers.end(), [](auto &p) { return p->authenticated && !p->closed; });

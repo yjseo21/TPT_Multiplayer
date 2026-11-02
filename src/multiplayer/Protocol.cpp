@@ -288,7 +288,6 @@ SimulationSettingsChange ParseSettings(const Json::Value &v)
     };
     flag("heat", s.heat); flag("ambientHeat", s.ambientHeat); flag("waterEqualisation", s.waterEqualisation);
     flag("newtonianGravity", s.newtonianGravity); flag("prettyPowder", s.prettyPowder);
-    if (s.newtonianGravity.value_or(false)) throw std::runtime_error("Newtonian gravity is not available in rooms yet");
     mode("airMode", s.airMode, NUM_AIRMODES); mode("edgeMode", s.edgeMode, NUM_EDGEMODES);
     mode("convectionMode", s.convectionMode, NUM_CONVMODES); mode("gravityMode", s.gravityMode, NUM_GRAVMODES);
     number("ambientAirTemp", s.ambientAirTemp, MIN_TEMP, MAX_TEMP);

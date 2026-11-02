@@ -49,9 +49,10 @@ Options Arguments(int argc, char **argv)
         if (a == "--recover") { o.recover = true; continue; }
         if (a == "--help")
         {
-            std::cout << "tpt-server [--bind ADDRESS] [--port 34403] [--cert PEM --key PEM]\n"
+            std::cout << "tpt-server: a dedicated room for up to four TPT Multiplayer players.\n"
+                "tpt-server [--bind ADDRESS] [--port 34403] [--cert PEM --key PEM] (wss://, for players on other computers)\n"
                 "  [--load world.cps] [--save world.cps] [--paused]\n"
-                "  [--exact-load world.tptx] [--exact-save world.tptx] (experimental, no gravity/Lua)\n"
+                "  [--exact-load world.tptx] [--exact-save world.tptx] (exact room state, same build only)\n"
                 "  [--tick-rate 60] [--update-rate 20] [--run-for SECONDS]\n"
                 "  [--bandwidth-kbps 8192] (per player; lossless frames, adaptive update rate)\n"
                 "  [--upload-kbps 8192] (shared room canvas budget)\n"
@@ -60,7 +61,8 @@ Options Arguments(int argc, char **argv)
                 "  [--seal-batch-ms 0] (0..1000; batch local-sim tick seals: less bandwidth, more latency)\n"
                 "  [--autosave-dir DIRECTORY --autosave-interval 60 --autosave-keep 5 --recover]\n"
                 "  [--seed UNSIGNED_31_BIT --journal FILE.jsonl] (experimental deterministic replay audit)\n"
-                "Credentials: TPT_ROOM_TOKEN and TPT_ADMIN_TOKEN environment variables.\n";
+                "Passwords: TPT_ROOM_TOKEN (to join) and TPT_ADMIN_TOKEN (admin controls) environment variables.\n"
+                "See README.multiplayer.md.\n";
             std::exit(0);
         }
         if (++i >= argc) throw std::runtime_error("missing option value");
@@ -164,8 +166,8 @@ int main(int argc, char **argv)
             tls.caFile = "NONE"; // Server authenticates players using tokens, not client certificates.
             server.setTLSOptions(tls);
         }
-        server.setOnConnectionCallback([&room](std::weak_ptr<ix::WebSocket> weak, std::shared_ptr<ix::ConnectionState>) {
-            room.Accept(std::move(weak));
+        server.setOnConnectionCallback([&room](std::weak_ptr<ix::WebSocket> weak, std::shared_ptr<ix::ConnectionState> state) {
+            room.Accept(std::move(weak), state ? state->getRemoteIp() : std::string());
         });
         auto listening = server.listen();
         if (!listening.first) throw std::runtime_error(listening.second);

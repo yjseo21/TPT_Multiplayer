@@ -5,5 +5,5 @@ if host_platform == 'emscripten'
 else
 	conf_data.set('FFTW_PLAN_MEASURE', 'true')
 endif
-powder_files += files('Fft.cpp')
-render_files += files('Null.cpp')
+powder_files += files('Fft.cpp', 'DeterministicGravity.cpp')
+render_files += files('Null.cpp', 'DeterministicGravity.cpp')

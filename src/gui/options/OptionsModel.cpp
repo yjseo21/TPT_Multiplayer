@@ -71,7 +71,7 @@ void OptionsModel::SetAmbientHeatSimulation(bool state)
 
 bool OptionsModel::GetNewtonianGravity()
 {
-	return bool(Shown()->grav);
+	return Requested().newtonianGravity.value_or(bool(Shown()->grav));
 }
 
 void OptionsModel::SetNewtonianGravity(bool state)

@@ -268,8 +268,11 @@ def run():
             oversized = WS(p); oversized.hello()
             oversized.s.sendall(b"\x82\xff" + struct.pack("!Q", 33*1024*1024) + b"mask")
             for _ in range(10):
-                if oversized.receive()[0] == "close":
-                    break
+                try:
+                    if oversized.receive()[0] == "close":
+                        break
+                except (ConnectionError, EOFError):
+                    break  # closed abruptly: Windows may reset instead of sending the close frame
             else:
                 raise AssertionError("oversized frame was not closed")
             oversized.close()

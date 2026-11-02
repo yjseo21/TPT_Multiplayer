@@ -120,8 +120,16 @@ int main()
         }
         Check(EncodeExactCheckpoint(original)==EncodeExactCheckpoint(restored),
               "exact state diverged after continued physics");
+        // Rooms' own gravity solver is part of the state; the game's threaded one is not.
         restored.sim->EnableNewtonianGravity(true);
-        Reject([&] { EncodeExactCheckpoint(restored); },"checkpoint with live gravity worker should be unsupported");
+        World withGravity;
+        RestoreExactCheckpoint(withGravity, EncodeExactCheckpoint(restored));
+        Check(withGravity.sim->grav && EncodeExactCheckpoint(withGravity)==EncodeExactCheckpoint(restored),
+              "room gravity should round-trip exactly");
+        restored.sim->EnableNewtonianGravity(false);
+        restored.sim->deterministicGravity = false;
+        restored.sim->EnableNewtonianGravity(true);
+        Reject([&] { EncodeExactCheckpoint(restored); },"checkpoint with the game's gravity worker should be unsupported");
         std::cout<<"ExactCheckpointV1: round-trip, corruption, allocator and 120-tick physics replay PASS\n";
         return 0;
     }

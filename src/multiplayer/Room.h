@@ -9,6 +9,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <deque>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -38,7 +39,7 @@ public:
     Room &operator=(const Room &) = delete;
 
     // Connection callback of the WebSocket server.
-    void Accept(std::weak_ptr<ix::WebSocket> socket);
+    void Accept(std::weak_ptr<ix::WebSocket> socket, std::string address = {});
     // One world-thread iteration: edits, physics, replication, frames, autosave.
     void Step();
     // World thread, between Step() calls: true as soon as edits are queued
@@ -106,6 +107,12 @@ private:
     void Autosave();
     void Stats(const std::vector<std::shared_ptr<Peer>> &active);
     void PasteChunk(const std::shared_ptr<Peer> &p, const Json::Value &v);
+    // Wrong room or admin passwords, per address: after 5 in a minute, that
+    // address waits (guessing a password one connection at a time is slow).
+    std::mutex authMutex;
+    std::map<std::string, std::deque<double>> authFailures;
+    bool AuthBlocked(const std::string &address);
+    void AuthFailed(const std::string &address);
     // Applies, journals and broadcasts one command; actor 0 is the server itself.
     void Commit(const Command &command, uint32_t actor, const std::vector<std::shared_ptr<Peer>> &active);
     void ReleaseStickmen(const std::vector<std::shared_ptr<Peer>> &active);

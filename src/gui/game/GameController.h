@@ -88,6 +88,7 @@ private:
 	void UpdateRoom();
 	void UpdateRoomOverlay();
 	void UpdateRoomSigns(); // the sign tool sends its changes to the room while it is shown
+	void CloseRoomSignWindow();
 	// While the room is shown: arrow keys steer this player's stickman.
 	bool RoomStickmanKey(int key, bool pressed);
 	int roomStickmanComm = 0, roomStickmanPcomm = 0;

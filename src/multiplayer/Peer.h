@@ -73,6 +73,7 @@ struct Peer
     std::atomic<uint64_t> bytesSent{0};
     std::atomic<unsigned> view{0};
     std::atomic<int> stickmanSlot{0}; // 1-4: which room stickman this player steers
+    std::string address; // remote IP, for limiting password guesses
     // A save being uploaded for a paste (receive callback only): id and base64 so far.
     uint64_t pasteId = 0;
     std::string pasteSave;

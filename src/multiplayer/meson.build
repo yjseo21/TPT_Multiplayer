@@ -11,7 +11,7 @@ mp_library = static_library('multiplayer-core',
   '../simulation/SimTool.cpp', '../simulation/ToolClasses.cpp',
   '../client/GameSave.cpp', '../client/User.cpp', '../graphics/Renderer.cpp',
   '../simulation/Editing.cpp', '../simulation/Snapshot.cpp',
-  '../simulation/gravity/Fft.cpp', '../gui/game/Brush.cpp', '../prefs/Prefs.cpp',
+  '../simulation/gravity/Fft.cpp', '../simulation/gravity/DeterministicGravity.cpp', '../gui/game/Brush.cpp', '../prefs/Prefs.cpp',
   include_directories: project_inc, dependencies: mp_deps,
   cpp_args: project_cpp_args + mp_codec_args, override_options: target_options)
 mp_core = declare_dependency(link_with: mp_library, dependencies: mp_deps,
@@ -92,6 +92,10 @@ test('multiplayer-local-replica-four-player', python3_prog,
 test('multiplayer-local-client', python3_prog,
   args: [files('../../tests/multiplayer/local_client_test.py'), mp_server, mp_client],
   timeout: 120, is_parallel: false)
+
+test('multiplayer-gravity-room', python3_prog,
+  args: [files('../../tests/multiplayer/gravity_room_test.py'), mp_server, mp_client],
+  timeout: 90, is_parallel: false)
 
 test('multiplayer-slow-player', python3_prog,
   args: [files('../../tests/multiplayer/slow_player_test.py'), mp_server, mp_client],

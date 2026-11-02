@@ -5,6 +5,10 @@
 #include <optional>
 
 class GameModel;
+namespace ui
+{
+	class Window;
+}
 
 class SignTool: public Tool
 {
@@ -24,6 +28,10 @@ public:
 	// changes the world itself: it hands the change here (index -1: a new sign;
 	// original: the sign as the window found it; result: none to delete it).
 	std::function<void (int index, std::optional<sign> original, std::optional<sign> result)> roomChange;
+	// The open sign window, if any. It shows the world it was opened on, so when
+	// a room replaces that world (resync, disconnect) the game closes it.
+	ui::Window *window = nullptr;
+	void CloseWindow();
 
 	static std::unique_ptr<VideoBuffer> GetIcon(int toolID, Vec2<int> size);
 	void Click(Simulation * sim, Brush const &brush, ui::Point position) override;
