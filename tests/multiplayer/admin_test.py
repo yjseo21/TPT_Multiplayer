@@ -96,6 +96,21 @@ with tempfile.TemporaryDirectory(prefix="tpt-admin-") as tmp:
         replacement.hello(name="Replacement", presence=True)
         replacement.frame(revision=edited)
 
+        # Loading a save replaces the room's world for everyone: administrators only.
+        blank = folder / "blank.cps"
+        subprocess.run([fixture["SERVER"], "--port", str(fixture["port"]()), "--run-for", "1", "--save", str(blank)],
+                       env=env, cwd=folder, capture_output=True, timeout=20, check=True)
+        save = base64.b64encode(blank.read_bytes()).decode()
+        def upload(ws, seq):
+            for at in range(0, len(save), 3000):
+                ws.send(dict(type="paste_chunk", id=seq, data=save[at:at + 3000]))
+            ws.send(dict(seq=seq, op="load", upload=seq))
+        upload(replacement, 1)
+        assert "administrator" in replacement.control("error", 1)["message"]
+        upload(second_admin, 1)
+        second_admin.control("ack", 1)
+        edited = replacement.frame(revision=edited + 1)["revision"]
+
         # Native client scripted moderation exercises the same command queue / ACK handling.
         command_file = folder / "admin-commands.jsonl"
         command_file.write_text('\n'.join(map(json.dumps, [
@@ -146,7 +161,7 @@ with tempfile.TemporaryDirectory(prefix="tpt-admin-") as tmp:
         assert "too many wrong passwords" in until(right, "close")
         right.close()
         print("PASS: admin permission, locks, admin bypass, removals, sequence rejection, unchanged physics, native CLI "
-              "paste budgets, network-address joins, local-only rooms without a password and password guessing limits")
+              "paste budgets, room loads, network-address joins, local-only rooms without a password and password guessing limits")
     finally:
         for ws in clients:
             ws.close()

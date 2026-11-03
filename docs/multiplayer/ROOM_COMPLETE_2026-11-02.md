@@ -91,6 +91,21 @@ Some things remain local in rooms:
   - client-to-server messages are still 4 KB, so the upload goes in chunks.
 - Holding Shift while placing leaves out pressure, as in single-player.
 
+## Loading a save into the room (added 4 November)
+
+- The administrator opens a save (save browser or local file) while in the
+  room. It is uploaded with the same `paste_chunk` messages, then a `load`
+  command (`{"op":"load","upload":id}`, administrators only) commits with
+  the save inside it.
+- Every machine applies it as the server's `--load` does: clear, the save's
+  settings (gravity, air, edges, heat, ambient heat, water equalisation,
+  Newtonian gravity), its particles, frame count and random state. The random
+  state is seeded from the save's bytes when the save has none.
+- Save files don't check their settings, so the server refuses a load whose
+  settings are outside what the room's settings command allows.
+- The room stays paused if it was, or pauses if the save was saved paused.
+- Same limit as pasting: 224 KB of save file.
+
 ## Fixes found on the way
 
 - **Server pacing:** the server reset its schedule after a late wake-up instead

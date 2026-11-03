@@ -604,6 +604,47 @@ int main()
                 paste["save"] = std::string((MaxPasteBytes+2)/3*4 + 4, 'A');
                 Reject([&] { ParseCommand(paste, false); });
             }
+            // Load (administrator): a save's world and settings replace the room's, as
+            // opening a save does; a joining player continues from it exactly.
+            {
+                World source;
+                for (int x = 100; x < 140; ++x) source.sim->create_part(-1, x, 200, PT_WATR);
+                source.sim->create_part(-1, 300, 300, PT_FIGH);
+                source.sim->gravityMode = GRAV_RADIAL; source.sim->air->airMode = AIR_NOUPDATE;
+                source.sim->SetEdgeMode(EDGE_LOOP); source.sim->legacy_enable = true;
+                source.sim->frameCount = 777; source.sim->ensureDeterminism = true; // saved only with determinism on
+                auto [missing, data] = source.CaptureSave()->Serialise();
+                Check(!missing, "a world becomes a save file");
+                Json::Value load; load["seq"] = 17; load["op"] = "load";
+                load["save"] = Base64Encode(std::string_view(data.data(), data.size()));
+                Reject([&] { ParseCommand(load, false); });
+                auto parsed = ParseCommand(load, true);
+                CheckPastedSave(parsed);
+                World room;
+                for (int x = 50; x < 90; ++x) room.sim->create_part(-1, x, 50, PT_GOLD);
+                room.sim->signs.push_back(sign("old", 10, 10, sign::Middle));
+                auto generation = room.resetGeneration;
+                room.Apply(parsed);
+                Check(room.sim->elementCount[PT_GOLD] == 0 && room.sim->signs.empty(), "loading replaces the room's world");
+                Check(room.sim->elementCount[PT_WATR] == 40 && room.sim->elementCount[PT_FIGH] == 1, "loading places the save's particles");
+                Check(room.sim->gravityMode == GRAV_RADIAL && room.sim->air->airMode == AIR_NOUPDATE &&
+                      room.sim->edgeMode == EDGE_LOOP && room.sim->legacy_enable && room.sim->frameCount == 777,
+                      "loading applies the save's settings");
+                Check(room.resetGeneration != generation && !room.paused, "loading starts a fresh picture and keeps the room running");
+                Check(ParseCommand(ParseJson(JsonText(RecordCommand(parsed)), MaxOrderedBytes), true).text == parsed.text, "loads are recorded exactly");
+                World joined;
+                RestoreExactCheckpoint(joined, EncodeExactCheckpoint(room));
+                for (int t = 0; t < 30; ++t) { room.Advance(); joined.Advance(); }
+                Check(DiagnosticDigests(room) == DiagnosticDigests(joined), "a player joining after a load continues exactly");
+                room.paused = true;
+                room.Apply(parsed);
+                Check(room.paused, "a paused room stays paused after a load");
+                // A save's settings are checked as a settings command checks them.
+                source.sim->air->edgePressure = 1000; // beyond MAX_PRESSURE
+                auto [missing2, bad] = source.CaptureSave()->Serialise();
+                load["save"] = Base64Encode(std::string_view(bad.data(), bad.size()));
+                Reject([&] { CheckPastedSave(ParseCommand(load, true)); });
+            }
             for (auto bad : { R"({"seq":8,"op":"console","cmd":"set","property":0,"value":9999,"selector":"all"})",
                               R"({"seq":8,"op":"console","cmd":"set","property":1,"value":1.5,"selector":"all"})",
                               R"({"seq":8,"op":"console","cmd":"set","property":1,"value":1,"selector":"some"})",

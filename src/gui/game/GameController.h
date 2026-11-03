@@ -82,6 +82,8 @@ private:
 	// While the room is shown: true (after telling the player) if this action
 	// cannot be done in a room. Never true when the own world is shown.
 	bool RoomRefuses(String what);
+	// The room's administrator: loads the save into the room instead (true if handled).
+	bool RoomLoad(const GameSave *save);
 	// Sends a tool use to the room instead of applying it locally. False when the
 	// player's own world is shown and the caller should apply it as usual.
 	bool RoomTool(int toolSelection, const char *action, ui::Point a, ui::Point b, bool dragging, bool useToolStrength);

@@ -49,6 +49,7 @@ Json::Value RecordCommand(const Command &c)
             v["op"] = "paste"; v["save"] = c.text; v["x1"] = c.x1; v["y1"] = c.y1;
             if (!c.includePressure) v["pressure"] = false;
             break;
+        case Command::Load: v["op"] = "load"; v["save"] = c.text; break;
         case Command::SignButton: v["op"] = "sign_button"; v["index"] = c.index; v["x1"] = c.x1; v["y1"] = c.y1; break;
         case Command::Console:
             v["op"] = "console"; v["cmd"] = c.cmd;

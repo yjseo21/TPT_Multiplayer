@@ -258,7 +258,7 @@ unsigned Command::Cost() const
         if (action == "box") return unsigned((std::abs(x2-x1)+1)*(std::abs(y2-y1)+1));
         return unsigned((std::max(std::abs(x2-x1), std::abs(y2-y1))+1)*(2*radius+1)*(2*radiusY+1));
     }
-    if (kind == Paste) return ToolCommandCostLimit; // about two pastes a second per player
+    if (kind == Paste || kind == Load) return ToolCommandCostLimit; // about two a second per player
     return kind == Brush ? unsigned((std::max(std::abs(x2-x1), std::abs(y2-y1)) + 1) * (2*radius+1) * (2*radius+1)) : 1;
 }
 namespace
@@ -355,6 +355,23 @@ Json::Value SettingsJson(const SimulationSettingsChange &settings)
     });
     return out;
 }
+namespace
+{
+// An OPS save (what the game writes) whose header states a bounded size: checked
+// before anything is unpacked. The full save is parsed once queued (CheckPastedSave).
+void ParseSave(const Json::Value &v, Command &c)
+{
+    if (!v["save"].isString() || v["save"].asString().size() > (MaxPasteBytes+2)/3*4)
+        throw std::runtime_error("save too large for a room");
+    c.text = v["save"].asString();
+    auto bytes = Base64Decode(c.text);
+    if (bytes.size() < 12 || bytes.compare(0, 4, "OPS1"))
+        throw std::runtime_error("a pasted save must be a save file of this game");
+    uint32_t unpacked = uint8_t(bytes[8]) | uint32_t(uint8_t(bytes[9])) << 8 | uint32_t(uint8_t(bytes[10])) << 16 | uint32_t(uint8_t(bytes[11])) << 24;
+    if (!unpacked || unpacked > MaxPasteUnpackedBytes)
+        throw std::runtime_error("save too large for a room");
+}
+}
 Command ParseCommand(const Json::Value &v, bool admin)
 {
     Command c{}; c.sequence = Sequence(v);
@@ -407,17 +424,7 @@ Command ParseCommand(const Json::Value &v, bool admin)
     {
         // A save or stamp, placed as the game places it (anyone may paste, as in the game).
         c.kind = Command::Paste;
-        if (!v["save"].isString() || v["save"].asString().size() > (MaxPasteBytes+2)/3*4)
-            throw std::runtime_error("pasted save too large for a room");
-        c.text = v["save"].asString();
-        // An OPS save (what the game writes) whose header states a bounded size: checked
-        // before anything is unpacked. The full save is parsed once queued (CheckPastedSave).
-        auto bytes = Base64Decode(c.text);
-        if (bytes.size() < 12 || bytes.compare(0, 4, "OPS1"))
-            throw std::runtime_error("a pasted save must be a save file of this game");
-        uint32_t unpacked = uint8_t(bytes[8]) | uint32_t(uint8_t(bytes[9])) << 8 | uint32_t(uint8_t(bytes[10])) << 16 | uint32_t(uint8_t(bytes[11])) << 24;
-        if (!unpacked || unpacked > MaxPasteUnpackedBytes)
-            throw std::runtime_error("pasted save too large for a room");
+        ParseSave(v, c);
         c.x1 = Integer(v, "x1", -XCELLS, XCELLS); c.y1 = Integer(v, "y1", -YCELLS, YCELLS); // cells, as the game places saves
         c.includePressure = !v.isMember("pressure") || v["pressure"].asBool();
     }
@@ -471,6 +478,7 @@ Command ParseCommand(const Json::Value &v, bool admin)
         }
         else if (op == "step") c.kind = Command::Step;
         else if (op == "clear") c.kind = Command::Clear;
+        else if (op == "load") { c.kind = Command::Load; ParseSave(v, c); }
         else if (op == "console")
         {
             c.kind = Command::Console;

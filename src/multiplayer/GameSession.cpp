@@ -24,9 +24,9 @@ bool GameSession::Enqueue(std::vector<Json::Value> commands, std::string &why)
     bool paste = false;
     for (auto &command : commands)
     {
-        // Paste uploads: chunks are messages of their own, then the paste itself,
-        // charged as the server charges it.
-        if (command.isMember("type") || command["op"] == "paste")
+        // Paste and load uploads: chunks are messages of their own, then the paste
+        // or load itself, charged as the server charges it.
+        if (command.isMember("type") || command["op"] == "paste" || command["op"] == "load")
         {
             paste = true;
             double cost = command.isMember("type") ? 0 : ToolCommandCostLimit;
@@ -205,12 +205,11 @@ bool GameSession::SignButton(int index, int x, int y, std::string &why)
     Json::Value c; c["op"] = "sign_button"; c["index"] = index; c["x1"] = x; c["y1"] = y;
     return Enqueue({c}, why);
 }
-bool GameSession::Paste(const std::vector<char> &save, int x, int y, bool includePressure, std::string &why)
+bool GameSession::Upload(const std::vector<char> &save, Json::Value command, std::string &why)
 {
-    if (!session.Synchronized()) { why = "The room is still synchronizing."; return false; }
     if (save.size() > MaxPasteBytes)
     {
-        why = "This is too large to paste into a room (over " + std::to_string(MaxPasteBytes/1024) + " KB as a save file).";
+        why = "This is too large for a room (over " + std::to_string(MaxPasteBytes/1024) + " KB as a save file).";
         return false;
     }
     auto text = Base64Encode(std::string_view(save.data(), save.size()));
@@ -222,10 +221,23 @@ bool GameSession::Paste(const std::vector<char> &save, int x, int y, bool includ
         chunk["data"] = text.substr(at, MaxPasteChunkChars);
         parts.push_back(std::move(chunk));
     }
-    Json::Value paste; paste["op"] = "paste"; paste["upload"] = Json::UInt64(id);
-    paste["x1"] = std::clamp(x, -XCELLS, XCELLS); paste["y1"] = std::clamp(y, -YCELLS, YCELLS); paste["pressure"] = includePressure;
-    parts.push_back(std::move(paste));
+    command["upload"] = Json::UInt64(id);
+    parts.push_back(std::move(command));
     return Enqueue(std::move(parts), why);
+}
+bool GameSession::Paste(const std::vector<char> &save, int x, int y, bool includePressure, std::string &why)
+{
+    if (!session.Synchronized()) { why = "The room is still synchronizing."; return false; }
+    Json::Value paste; paste["op"] = "paste";
+    paste["x1"] = std::clamp(x, -XCELLS, XCELLS); paste["y1"] = std::clamp(y, -YCELLS, YCELLS); paste["pressure"] = includePressure;
+    return Upload(save, std::move(paste), why);
+}
+bool GameSession::Load(const std::vector<char> &save, std::string &why)
+{
+    if (!session.Admin()) { why = "Only the room's administrator can load a save into the room."; return false; }
+    if (!session.Synchronized()) { why = "The room is still synchronizing."; return false; }
+    Json::Value load; load["op"] = "load";
+    return Upload(save, std::move(load), why);
 }
 bool GameSession::Reset(const std::string &what, std::string &why)
 {

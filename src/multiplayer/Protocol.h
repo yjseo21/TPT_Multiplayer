@@ -23,7 +23,7 @@ constexpr size_t MaxPasteUnpackedBytes = 16U * 1024 * 1024;
 // Ordered server messages (commits) may carry a paste.
 constexpr size_t MaxOrderedBytes = 320 * 1024;
 // Bump with any change to the engine, serializer, or enabled elements.
-constexpr const char *BuildId = "tpt-c205becb-mp3-ingame8";
+constexpr const char *BuildId = "tpt-c205becb-mp3-ingame9";
 
 struct Frame
 {
@@ -43,7 +43,7 @@ int Integer(const Json::Value &value, const char *field, int minimum, int maximu
 
 struct Command
 {
-    enum Kind { Brush, Pause, Step, Clear, ToolAction, Settings, Stickman, StickmanSpawn, Reset, Console, Sign, SignButton, Paste } kind;
+    enum Kind { Brush, Pause, Step, Clear, ToolAction, Settings, Stickman, StickmanSpawn, Reset, Console, Sign, SignButton, Paste, Load } kind;
     uint64_t sequence;
     int x1 = 0, y1 = 0, x2 = 0, y2 = 0, radius = 0, element = 0;
     int radiusY = 0; // tool brushes: vertical radius (radius is horizontal)
@@ -74,6 +74,8 @@ struct Command
     int justification = 1;
     bool remove = false;
     // Paste: a save file (text, base64), placed at cell (x1, y1) as the game places it.
+    // Load (administrator): a save file (text) that replaces the room's world and
+    // settings, as opening a save does in the game.
     bool includePressure = true;
     unsigned Cost() const;
 };
@@ -82,9 +84,10 @@ Command ParseCommand(const Json::Value &json, bool admin);
 int DecorationMode(const std::string &identifier);
 // The "settings" member of a settings command: only the fields that are set.
 Json::Value SettingsJson(const SimulationSettingsChange &settings);
-// Parses a paste command's save fully (throws if it is not a valid save). The
-// server calls this on the sender's connection, so a broken save never reaches
-// the room, and the room's own thread never spends time on a bad one.
+// Parses a paste or load command's save fully (throws if it is not a valid save,
+// or for a load, if its settings are out of range). The server calls this on the
+// sender's connection, so a broken save never reaches the room, and the room's
+// own thread never spends time on a bad one.
 void CheckPastedSave(const Command &paste);
 // Brush-cell operations: one tool command, and a player's sustained rate (and burst).
 constexpr unsigned ToolCommandCostLimit = 1000000;

@@ -1386,8 +1386,31 @@ void GameController::OpenLocalSaveWindow(bool asCurrent)
 	}
 }
 
+bool GameController::RoomLoad(const GameSave *save)
+{
+#ifdef TPT_GAME_MULTIPLAYER
+	// The room's administrator opens saves into the room: its world and settings
+	// replace the room's. Other players open them on their own canvas.
+	if (!showRoom || !room->Admin() || !save)
+		return false;
+	auto [missing, data] = save->Serialise();
+	std::string why;
+	if (missing)
+		RoomNotice("This save cannot be written out again, so it cannot be loaded into a room.");
+	else if (!room->Load(data, why))
+		RoomNotice(ByteString(why).FromUtf8());
+	else
+		RoomNotice("Loading the save into the room. To open it on your own canvas instead, press Ctrl+Shift+M first.");
+	return true;
+#else
+	return false;
+#endif
+}
+
 void GameController::LoadSaveFile(std::unique_ptr<SaveFile> file)
 {
+	if (file && RoomLoad(file->GetGameSave()))
+		return;
 	if (showRoom)
 		ToggleRoom();
 	gameModel->SetSaveFile(std::move(file), gameView->ShiftBehaviour());
@@ -1396,6 +1419,8 @@ void GameController::LoadSaveFile(std::unique_ptr<SaveFile> file)
 
 void GameController::LoadSave(std::unique_ptr<SaveInfo> save)
 {
+	if (save && RoomLoad(save->GetGameSave()))
+		return;
 	if (showRoom)
 		ToggleRoom();
 	gameModel->SetSave(std::move(save), gameView->ShiftBehaviour());

@@ -139,6 +139,16 @@ void CheckPastedSave(const Command &paste)
 {
     auto bytes = Base64Decode(paste.text);
     GameSave save(std::vector<char>(bytes.begin(), bytes.end()), false);
+    if (paste.kind != Command::Load) return;
+    // A loaded save brings its settings, which a save file does not check: the
+    // ranges a room's settings command allows.
+    auto inRange = [](float value, float minimum, float maximum) { return value >= minimum && value <= maximum; };
+    if (save.gravityMode < 0 || save.gravityMode >= NUM_GRAVMODES || save.airMode < 0 || save.airMode >= NUM_AIRMODES ||
+        save.edgeMode < 0 || save.edgeMode >= NUM_EDGEMODES || save.convectionMode < 0 || save.convectionMode >= NUM_CONVMODES ||
+        !inRange(save.ambientAirTemp, MIN_TEMP, MAX_TEMP) || !inRange(save.edgePressure, -MAX_PRESSURE, MAX_PRESSURE) ||
+        !inRange(save.edgeVelocityX, -MAX_PRESSURE, MAX_PRESSURE) || !inRange(save.edgeVelocityY, -MAX_PRESSURE, MAX_PRESSURE) ||
+        !inRange(save.vorticityCoeff, 0, 1) || !inRange(save.customGravityX, -1000, 1000) || !inRange(save.customGravityY, -1000, 1000))
+        throw std::runtime_error("this save's settings are out of range");
 }
 void ApplySettings(Simulation &sim, const SimulationSettingsChange &s)
 {
@@ -184,6 +194,14 @@ void World::Apply(const Command &c)
         if (!paused) throw std::runtime_error("pause before stepping");
         Advance(); break;
     case Command::Clear: sim->clear_sim(); ++resetGeneration; break;
+    case Command::Load:
+    {
+        // As opening a save in the game: its world and settings replace the room's,
+        // which stays paused if it was.
+        auto bytes = Base64Decode(c.text);
+        LoadSave(std::vector<char>(bytes.begin(), bytes.end()), paused);
+        break;
+    }
     case Command::Settings: ApplySettings(*sim, c.settings); break;
     case Command::Reset: ApplyReset(*sim, c.what); break;
     case Command::Console: ApplyConsole(*sim, c); break;
@@ -229,6 +247,11 @@ void World::Load(const std::string &path)
 {
     std::vector<char> bytes;
     if (!Platform::ReadFile(bytes, path)) throw std::runtime_error("cannot read world file");
+    LoadSave(std::move(bytes), false);
+    ++revision;
+}
+void World::LoadSave(std::vector<char> bytes, bool stayPaused)
+{
     GameSave save(bytes, false);
     sim->clear_sim();
     ++resetGeneration;
@@ -246,9 +269,8 @@ void World::Load(const std::string &path)
     sim->frameCount = save.frameCount;
     if (save.hasRngState) sim->rng.state(save.rngState);
     sim->ensureDeterminism = save.ensureDeterminism;
-    paused = save.paused;
+    paused = save.paused || stayPaused;
     sim->BeforeSim(false);
-    ++revision;
 }
 std::unique_ptr<GameSave> World::CaptureSave() const
 {

@@ -66,6 +66,12 @@ Everything works as in single-player, for everyone, with these differences:
   Options dialog), resets, invert air, and the console's `set`, `create`,
   `delete`, `bubble` and `reset`. In builds with Lua, type them with `!` in
   front, as in normal TPT. Other players see a notice.
+- **Loading a save into the room (admin only):** in the room, open a save
+  from the save browser (Open) or a local file. It replaces the room's world
+  and settings for everyone, as opening a save does in single-player, and the
+  room stays paused if it was. Saves up to 224 KB. To open one on your own
+  canvas instead, press Ctrl+Shift+M first. Other players who open a save
+  switch to their own canvas, as before.
 - **Everyone:**
   - all elements, walls and tools, with all brush shapes;
   - decoration;
@@ -87,8 +93,7 @@ Everything works as in single-player, for everyone, with these differences:
     differ between players);
   - custom Game of Life types;
   - cut (copy works);
-  - undo and redo;
-  - opening a save into the room.
+  - undo and redo.
 - **Lua scripts** run on your own canvas only.
 - **Display settings** (temperature scale, render modes, HUD) are yours alone.
 

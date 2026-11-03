@@ -111,7 +111,7 @@ void Room::PasteChunk(const std::shared_ptr<Peer> &p, const Json::Value &v)
         throw std::runtime_error("invalid paste upload");
     if (v["id"].asUInt64() != p->pasteId) { p->pasteId = v["id"].asUInt64(); p->pasteSave.clear(); }
     if (p->pasteSave.size() + v["data"].asString().size() > (MaxPasteBytes+2)/3*4)
-        throw std::runtime_error("pasted save too large for a room");
+        throw std::runtime_error("save too large for a room");
     // Uploads share the player's editing budget (one operation per chunk).
     Charge(*p, 0);
     p->pasteSave += v["data"].asString();
@@ -309,11 +309,11 @@ void Room::QueueRequest(const std::shared_ptr<Peer> &p, const Json::Value &v, ui
     }
     else
     {
-        if (v["op"] == "paste")
+        if (v["op"] == "paste" || v["op"] == "load")
         {
             // The uploaded save becomes part of the command, and of its commit.
             if (!v["upload"].isUInt64() || v["upload"].asUInt64() != p->pasteId || p->pasteSave.empty())
-                throw std::runtime_error("paste without its uploaded save");
+                throw std::runtime_error(v["op"].asString() + " without its uploaded save");
             auto withSave = v;
             withSave["save"] = std::move(p->pasteSave);
             withSave.removeMember("upload");

@@ -18,6 +18,9 @@ public:
     void Advance();
     void Apply(const Command &command);
     void Load(const std::string &path);
+    // A save file's world and settings replace this one's (paused if the save is,
+    // or if stayPaused). As a command, it leaves the revision to the room.
+    void LoadSave(std::vector<char> bytes, bool stayPaused);
     void Save(const std::string &path) const;
     std::unique_ptr<GameSave> CaptureSave() const;
 };

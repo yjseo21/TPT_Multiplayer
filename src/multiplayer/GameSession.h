@@ -75,6 +75,8 @@ public:
     bool SignButton(int index, int x, int y, std::string &why);
     // A save or stamp (save file bytes) placed at cell (x, y), as the game places it.
     bool Paste(const std::vector<char> &save, int x, int y, bool includePressure, std::string &why);
+    // Admin: a save file (bytes) replaces the room's world and settings, as opening it does in the game.
+    bool Load(const std::vector<char> &save, std::string &why);
     // Every edit this player made has been applied to the shown world (or the
     // connection that carried it is gone).
     bool Settled() const { return outbox.empty() && session.OwnCommitted() >= session.Edits().Last(); }
@@ -107,6 +109,8 @@ private:
     void Flush();
     bool SendAdmin(Json::Value command, std::string &why);
     bool SendStickman(Json::Value command, std::string &why);
+    // A save uploaded in chunks, then the paste or load command that uses it.
+    bool Upload(const std::vector<char> &save, Json::Value command, std::string &why);
     size_t stickmanQueued = 0; // stickman commands waiting in the outbox
     uint64_t pasteIds = 0;
 };

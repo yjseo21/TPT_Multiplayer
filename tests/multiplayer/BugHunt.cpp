@@ -697,6 +697,7 @@ int Chaos(int shard, int of, int ticks)
 						auto bytes = save->Serialise().second;
 						stamp.assign(bytes.begin(), bytes.end());
 					}
+					if (pick(6) == 0) { v["op"] = "load"; v["save"] = Base64Encode(stamp); break; } // the stamp replaces the world
 					v["op"] = "paste"; v["save"] = Base64Encode(stamp); v["x1"] = pick(XCELLS) - 5; v["y1"] = pick(YCELLS) - 5; v["pressure"] = pick(2) == 1;
 					break;
 				case 14:
@@ -722,7 +723,7 @@ int Chaos(int shard, int of, int ticks)
 				v["seq"] = Json::UInt64(++seq);
 				Command c;
 				bool parsed = true;
-				try { c = ParseCommand(v, true); if (c.kind == Command::Paste) CheckPastedSave(c); }
+				try { c = ParseCommand(v, true); if (c.kind == Command::Paste || c.kind == Command::Load) CheckPastedSave(c); }
 				catch (const std::exception &) { parsed = false; }
 				if (only)
 					std::cerr << "tick " << t << " " << (parsed ? "" : "(refused) ") << JsonText(v).substr(0, 300) << std::endl;
