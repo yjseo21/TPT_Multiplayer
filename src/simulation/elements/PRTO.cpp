@@ -95,10 +95,14 @@ static int update(UPDATE_FUNC_ARGS)
 							sim->player.spwn = 0;
 						if (sim->portalp[parts[i].tmp][randomness][nnx].type==PT_STKM2)
 							sim->player2.spwn = 0;
+						// Multiplayer: the fighter's player. Creating the fighter below may reuse
+						// its own (just released) slot, which clears it.
+						int controller = 0;
 						if (sim->portalp[parts[i].tmp][randomness][nnx].type==PT_FIGH)
 						{
 							sim->fighcount--;
 							sim->fighters[(unsigned char)sim->portalp[parts[i].tmp][randomness][nnx].tmp].spwn = 0;
+							controller = sim->fighters[(unsigned char)sim->portalp[parts[i].tmp][randomness][nnx].tmp].controller;
 						}
 						auto np = sim->create_part(-1, x+rx, y+ry, sim->portalp[parts[i].tmp][randomness][nnx].type);
 						if (np<0)
@@ -119,6 +123,7 @@ static int update(UPDATE_FUNC_ARGS)
 							// Release the fighters[] element allocated by create_part, the one reserved when the fighter went into the portal will be used
 							sim->fighters[(unsigned char)parts[np].tmp].spwn = 0;
 							sim->fighters[(unsigned char)sim->portalp[parts[i].tmp][randomness][nnx].tmp].spwn = 1;
+							sim->fighters[(unsigned char)sim->portalp[parts[i].tmp][randomness][nnx].tmp].controller = controller;
 						}
 						if (sim->portalp[parts[i].tmp][randomness][nnx].vx == 0.0f && sim->portalp[parts[i].tmp][randomness][nnx].vy == 0.0f)
 						{

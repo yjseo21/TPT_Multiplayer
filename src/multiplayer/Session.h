@@ -106,6 +106,7 @@ private:
 
     bool ready = false, admin = false, roomLocked = false, presenceEnabled = false, toolActionsSupported = false;
     unsigned ownPlayer = 0, connections = 0, failures = 0;
+    std::string lastFailure; // why the last connection (or attempt) ended, shown while reconnecting
     int ownStickman = 0;
     int desiredView = 0;
     bool attempting = true;
@@ -133,6 +134,10 @@ private:
     double behindSince = 0, lastSkipAhead = -100, behindSeconds = 0;
     uint64_t behindBacklog = 0, catchingUp = 0; // backlog when the behind clock last restarted; ticks still to run
     uint64_t skipAheads = 0;
+    // Room pacing: physics ticks run and the time they took, reported to the
+    // server every 2 s as the rate this computer can follow.
+    double paceSince = 0, paceSeconds = 0;
+    uint64_t paceSteps = 0;
 
     // Own-edit latency: from Send() until the edit is applied to the local world.
     std::map<uint64_t, double> sentAt;

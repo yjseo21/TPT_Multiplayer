@@ -81,7 +81,7 @@ static int update(UPDATE_FUNC_ARGS)
 							float newtemp = ((60.0f - (float)elements[TYP(r)].Hardness)) * 7.0f;
 							if (newtemp < 0)
 								newtemp = 0;
-							parts[i].temp += newtemp;
+							parts[i].temp = restrict_flt(parts[i].temp + newtemp, MIN_TEMP, MAX_TEMP);
 							parts[i].life--;
 							sim->kill_part(ID(r));
 						}

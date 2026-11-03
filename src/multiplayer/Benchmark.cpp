@@ -8,14 +8,72 @@
 #include "prefs/GlobalPrefs.h"
 #include <chrono>
 #include <iomanip>
+#include <algorithm>
 #include <iostream>
+#include <string>
+#include <vector>
 
 using namespace multiplayer;
 using Clock = std::chrono::steady_clock;
-int main()
+namespace
+{
+void Fill(Simulation &sim, int x0, int y0, int x1, int y1, int element)
+{
+    for (int y = y0; y < y1; ++y)
+        for (int x = x0; x < x1; ++x)
+            sim.create_part(-1, x, y, element);
+}
+// Heavy rooms: explosions and full screens, timed tick by tick (the slowest
+// ticks are the ones players feel).
+const std::vector<std::pair<std::string, void (*)(Simulation &)>> heavyScenes = {
+    { "c4-block", [](Simulation &s) { Fill(s, 100, 200, 500, 380, PT_PLEX); Fill(s, 98, 200, 100, 380, PT_FIRE); } },
+    { "nitro-pool", [](Simulation &s) { Fill(s, 50, 250, 560, 380, PT_NITR); Fill(s, 50, 240, 560, 242, PT_FIRE); } },
+    { "gunpowder", [](Simulation &s) { Fill(s, 20, 150, 590, 380, PT_GUNP); Fill(s, 300, 140, 310, 145, PT_FIRE); } },
+    { "bomb-rain", [](Simulation &s) { Fill(s, 10, 250, 600, 380, PT_SAND); for (int x = 20; x < 590; x += 6) Fill(s, x, 20, x+2, 30, PT_BOMB); } },
+    { "thunder-sea", [](Simulation &s) { Fill(s, 10, 200, 600, 380, PT_WATR); for (int x = 20; x < 590; x += 12) Fill(s, x, 30, x+3, 33, PT_THDR); } },
+    { "full-mix", [](Simulation &s) {
+        Fill(s, 4, 4, 608, 100, PT_WATR); Fill(s, 4, 100, 608, 200, PT_SAND);
+        Fill(s, 4, 200, 608, 300, PT_OIL); Fill(s, 4, 300, 608, 380, PT_LAVA); } },
+};
+int HeavyScenes(const std::string &only, int ticks)
+{
+    std::cout << "scene,start_particles,peak_particles,mean_tick_ms,p95_tick_ms,max_tick_ms,digest\n";
+    for (auto &[name, build] : heavyScenes)
+    {
+        if (!only.empty() && only != name)
+            continue;
+        World world;
+        world.sim->rng.seed(12345);
+        build(*world.sim);
+        world.sim->BeforeSim(false);
+        auto start = world.sim->NUM_PARTS;
+        int peak = start;
+        std::vector<double> times;
+        for (int tick = 0; tick < ticks; ++tick)
+        {
+            auto begin = Clock::now();
+            world.Advance();
+            times.push_back(std::chrono::duration<double, std::milli>(Clock::now()-begin).count());
+            peak = std::max(peak, world.sim->NUM_PARTS);
+        }
+        auto sorted = times;
+        std::sort(sorted.begin(), sorted.end());
+        double mean = 0;
+        for (auto t : times) mean += t;
+        std::cout << name << ',' << start << ',' << peak << ',' << std::fixed << std::setprecision(2)
+            << mean/ticks << ',' << sorted[ticks*95/100] << ',' << sorted.back() << ','
+            << DigestSummary(DiagnosticDigests(world)) << std::endl;
+    }
+    return 0;
+}
+}
+int main(int argc, char **argv)
 {
     GlobalPrefs prefs;
     SimulationData data;
+    // tpt-benchmark --heavy [scene] [ticks]: explosion and full-screen scenes only.
+    if (argc > 1 && std::string(argv[1]) == "--heavy")
+        return HeavyScenes(argc > 2 ? argv[2] : "", argc > 3 ? std::stoi(argv[3]) : 300);
     std::cout << "scene,particles,mean_tick_ms,mean_encode_ms,mean_decode_ms,mean_frame_bytes,state_mbps_at_20hz,canvas_mbps_at_20hz,canvas_render_ms,canvas_delta_ms\n";
     for (auto [name, count, element] : {
         std::tuple{"static-metal", 6000, PT_METL},

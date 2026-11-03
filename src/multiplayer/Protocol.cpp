@@ -311,7 +311,14 @@ void ParsePropertyValue(const Json::Value &v, Command &c)
     if (type == StructProperty::Float)
     {
         if (!v["value"].isNumeric() || !std::isfinite(v["value"].asDouble())) throw std::runtime_error("invalid property value");
-        c.value = float(v["value"].asDouble());
+        auto value = v["value"].asDouble();
+        auto &name = properties[c.property].Name;
+        if (name == "temp") value = std::clamp(value, double(MIN_TEMP), double(MAX_TEMP));
+        if ((name == "x" && !(value >= 0 && value < XRES)) || (name == "y" && !(value >= 0 && value < YRES)))
+            throw std::runtime_error("a particle position must be on the screen");
+        // Velocities beyond what movement allows only overflow other elements' arithmetic.
+        if (name == "vx" || name == "vy") value = std::clamp(value, -1e4, 1e4);
+        c.value = float(value);
     }
     else if (type == StructProperty::UInteger)
     {

@@ -192,7 +192,7 @@ static int update(UPDATE_FUNC_ARGS)
 		break;
 	case PT_TUNG:
 		if(parts[i].temp < 3595.0){
-			parts[i].temp += sim->rng.between(-4, 15);
+			parts[i].temp = restrict_flt(parts[i].temp + sim->rng.between(-4, 15), MIN_TEMP, MAX_TEMP); // a cold wire must not pass absolute zero
 		}
 	default:
 		break;

@@ -160,11 +160,16 @@ Newtonian gravity in rooms uses its own solver, which gives identical results
 on every computer. The game's usual gravity solver can't, because of thread
 timing and machine-specific FFT algorithms.
 
-A slow player never slows the others:
-- The server never waits for players.
+Slow computers and heavy rooms:
 - Joining costs the room only a few milliseconds.
-- A computer that can't keep up shows **TOO SLOW** and jumps to the room's
-  present instead of falling further behind.
+- Each player's game tells the server how fast it can run the physics. When a
+  big explosion or a full screen is too much for one player's computer, the
+  room slows down to that player's pace (**ROOM SLOWED**), down to half its
+  normal speed, and speeds back up once the load passes. Nobody falls behind
+  or has to download the room again.
+- A computer too slow even for half speed doesn't hold the others back: it
+  shows **TOO SLOW** and jumps to the room's present, waiting longer before
+  each further jump.
 
 Engineering notes are in `docs/multiplayer/`:
 - `HOSTING_SECURITY.md`: hosting safely;

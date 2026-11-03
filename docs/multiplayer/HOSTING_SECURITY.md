@@ -50,6 +50,10 @@ of JSON, up to 4 KB each. Anyone can connect.
   - each connection's outgoing queue is capped in messages and in bytes
     (64 MB); a client that stops reading is dropped;
   - connections that don't log in within 5 seconds are closed.
+- **Room pacing:** a logged-in player reports how fast their computer runs the
+  physics, and the room slows to it. The server only stores that number, and
+  the room never runs below half its configured speed, so a player who lies
+  can at most halve the room's speed while they're in it.
 
 ## How it was tested
 

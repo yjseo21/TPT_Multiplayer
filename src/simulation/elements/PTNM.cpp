@@ -99,8 +99,8 @@ static void hygn_reactions(int hygn1_id, UPDATE_FUNC_ARGS)
 				{
 					sim->part_change_type(ID(r), x + rx, y + ry, PT_DSTW);
 					sim->part_change_type(hygn1_id, (int)(parts[hygn1_id].x + 0.5f), (int)(parts[hygn1_id].y + 0.5f), PT_DSTW);
-					parts[ID(r)].temp += 5.0f;
-					parts[hygn1_id].temp += 5.0f;
+					parts[ID(r)].temp = restrict_flt(parts[ID(r)].temp + 5.0f, MIN_TEMP, MAX_TEMP);
+					parts[hygn1_id].temp = restrict_flt(parts[hygn1_id].temp + 5.0f, MIN_TEMP, MAX_TEMP);
 
 					parts[i].ctype = PT_PTNM;
 					parts[i].life = 4;
@@ -115,8 +115,8 @@ static void hygn_reactions(int hygn1_id, UPDATE_FUNC_ARGS)
 					sim->part_change_type(ID(r), x + rx, y + ry, PT_NBLE);
 					sim->part_change_type(hygn1_id, (int)(parts[hygn1_id].x + 0.5f), (int)(parts[hygn1_id].y + 0.5f), PT_NEUT);
 
-					parts[ID(r)].temp += 1000.0f;
-					parts[hygn1_id].temp += 1000.0f;
+					parts[ID(r)].temp = restrict_flt(parts[ID(r)].temp + 1000.0f, MIN_TEMP, MAX_TEMP);
+					parts[hygn1_id].temp = restrict_flt(parts[hygn1_id].temp + 1000.0f, MIN_TEMP, MAX_TEMP);
 					sim->pv[(y + ry) / CELL][(x + rx) / CELL] += 10.0f;
 
 					int j = sim->create_part(-3, x + rx, y + ry, PT_PHOT);
@@ -222,7 +222,7 @@ static int update(UPDATE_FUNC_ARGS)
 						{
 							//@ PTNM + GAS -> PTNM + INSL
 							sim->part_change_type(ID(r), x + rx, y + ry, PT_INSL);
-							parts[i].temp += 60.0f; // Other part is INSL, adding temp is useless
+							parts[i].temp = restrict_flt(parts[i].temp + 60.0f, MIN_TEMP, MAX_TEMP); // Other part is INSL, adding temp is useless
 						}
 						break;
 

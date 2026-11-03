@@ -158,8 +158,10 @@ public:
 	String ElementResolve(int type, int ctype) const;
 	String BasicParticleInfo(Particle const &sample_part) const;
 	int GetParticleType(ByteString type) const;
-	bool IsHeatInsulator(const Particle &p) const;
-	float HeatCapacityOf(const Particle &p) const;
+	// Inline (defined in ElementClasses.h): heat conduction asks these for
+	// every particle and neighbour, every tick.
+	inline bool IsHeatInsulator(const Particle &p) const;
+	inline float HeatCapacityOf(const Particle &p) const;
 	float DestructibilityScore(int t) const;
 
 	bool IsElement(int type) const

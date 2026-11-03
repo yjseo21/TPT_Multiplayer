@@ -109,8 +109,10 @@ void Element_EMP_Trigger(Simulation *sim, int triggerCount)
 	for (int r = 0; r < sim->parts.active; r++)
 	{
 		int t = parts[r].type;
-		auto rx = int(parts[r].x);
-		auto ry = int(parts[r].y);
+		// Rounded, as everywhere else: truncating put type changes in the next
+		// pixel's map entry and left the old one standing.
+		auto rx = int(parts[r].x + 0.5f);
+		auto ry = int(parts[r].y + 0.5f);
 		if (t==PT_SPRK || (t==PT_SWCH && parts[r].life!=0 && parts[r].life!=10) || (t==PT_WIRE && parts[r].ctype>0))
 		{
 			bool is_elec = false;
@@ -130,7 +132,7 @@ void Element_EMP_Trigger(Simulation *sim, int triggerCount)
 			}
 			for (int nx =-2; nx <= 2; nx++)
 				for (int ny =-2; ny <= 2; ny++)
-					if (rx+nx>=0 && ry+ny>=0 && rx+nx<XRES && ry+ny<YRES && (rx || ry))
+					if (rx+nx>=0 && ry+ny>=0 && rx+nx<XRES && ry+ny<YRES && (nx || ny))
 					{
 						int n = sim->pmap[ry+ny][rx+nx];
 						if (!n)

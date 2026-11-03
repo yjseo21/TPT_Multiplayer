@@ -84,6 +84,9 @@ struct Peer
     double operations = 120, work = EditWorkPerSecond;
     double streamControls = 4, streamRefill = MonotonicSeconds();
     double lastProbe = -10, lastDesyncReport = -10;
+    // Room pacing: how many ticks a second this player's computer can follow
+    // (its own report), and when it last said so (receive callback writes).
+    std::atomic<double> paceHz{0}, paceAt{-100};
     std::atomic<double> lastBandwidthWait{-10};
     std::mutex mutex;
     std::condition_variable changed;

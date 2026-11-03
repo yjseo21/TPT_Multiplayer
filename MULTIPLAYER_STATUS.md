@@ -25,8 +25,9 @@ Engineering notes: `docs/multiplayer/`.
 - **One stickman per player**, up to four.
 - **Everyone's tools:** decoration, property, signs, sign buttons, sample, and
   pasting stamps.
-- **Lag isolation:** joins cost the room a few milliseconds, and a computer that
-  can't keep up shows TOO SLOW and jumps ahead.
+- **Lag isolation:** joins cost the room a few milliseconds. In a heavy room the
+  server runs at the slowest player's pace (down to half speed, ROOM SLOWED);
+  a computer too slow for that shows TOO SLOW and jumps ahead.
 - **Light on the network and smooth:**
   - an idle room costs a player about 25 kbps, whatever the particle count;
   - the once-a-second sync check takes 1–3 ms;
@@ -56,7 +57,8 @@ Engineering notes: `docs/multiplayer/`.
 
 - **Not available in rooms:** decoration fill, custom Game of Life types, cut,
   undo and redo, and opening a whole save into the room.
-- **Very slow computers:** they get TOO SLOW and periodic jumps ahead; there's
+- **Very slow computers** (under half the room's speed): they get TOO SLOW and
+  jumps ahead, each further one after a longer wait; there's
   no server-rendered video fallback in the game yet (`tpt-remote` has one).
 - **Untested conditions:** no measurements over real internet links yet, and no
   manual session between two separate computers.

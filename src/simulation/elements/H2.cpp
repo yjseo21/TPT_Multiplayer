@@ -82,7 +82,7 @@ static int update(UPDATE_FUNC_ARGS)
 						parts[ID(r)].tmp |= 1;
 						//@ H2 + FIRE -> 2xFIRE
 						sim->create_part(i,x,y,PT_FIRE);
-						parts[i].temp += sim->rng.between(0, 99);
+						parts[i].temp = restrict_flt(parts[i].temp + sim->rng.between(0, 99), MIN_TEMP, MAX_TEMP);
 						parts[i].tmp |= 1;
 						return 1;
 					}
@@ -90,7 +90,7 @@ static int update(UPDATE_FUNC_ARGS)
 					{
 						//@ H2 + PLSM/LAVA -> FIRE + PLSM/LAVA
 						sim->create_part(i,x,y,PT_FIRE);
-						parts[i].temp += sim->rng.between(0, 99);
+						parts[i].temp = restrict_flt(parts[i].temp + sim->rng.between(0, 99), MIN_TEMP, MAX_TEMP);
 						parts[i].tmp |= 1;
 						return 1;
 					}
@@ -136,7 +136,7 @@ static int update(UPDATE_FUNC_ARGS)
 					parts[j].tmp |= 4;
 				}
 			}
-			parts[i].temp = temp + sim->rng.between(750, 1249);
+			parts[i].temp = restrict_flt(temp + sim->rng.between(750, 1249), MIN_TEMP, MAX_TEMP);
 			sim->pv[y/CELL][x/CELL] += 30;
 			return 1;
 		}

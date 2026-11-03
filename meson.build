@@ -267,12 +267,16 @@ if get_option('build_multiplayer')
 	# therefore be strict IEEE everywhere: no fast-math reordering or
 	# approximations, and no fused multiply-add (clang fuses by default, and ARM64
 	# has FMA). Transcendental functions come from simulation/DeterministicMath.
+	# Integer overflow wraps (-fwrapv): elements do arithmetic on life and tmp, which
+	# the console can set to anything, and an overflow left undefined lets each
+	# compiler compute something different. MSVC has no such option and does not
+	# rely on signed overflow being impossible.
 	if cpp_compiler.get_id() == 'clang-cl'
-		project_cpp_args += [ '/fp:precise', '/clang:-ffp-contract=off' ]
+		project_cpp_args += [ '/fp:precise', '/clang:-ffp-contract=off', '/clang:-fwrapv' ]
 	elif cpp_compiler.get_argument_syntax() == 'msvc'
 		project_cpp_args += [ '/fp:precise' ] # contracts nothing unless /fp:contract is given
 	else
-		project_cpp_args += [ '-fno-fast-math', '-ffp-contract=off' ]
+		project_cpp_args += [ '-fno-fast-math', '-ffp-contract=off', '-fwrapv' ]
 	endif
 endif
 if not is_debug

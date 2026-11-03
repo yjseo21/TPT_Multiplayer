@@ -46,6 +46,19 @@ void SpawnRoomStickman(Simulation &sim, int slot, int x, int y)
             (slot > 2 && p.type == PT_FIGH && p.tmp >= 0 && p.tmp < MAX_FIGHTERS && sim.fighters[p.tmp].controller == slot))
             sim.kill_part(i);
     }
+    // ...including one inside a portal: it still holds its stickman (or fighter) slot.
+    for (auto &channel : sim.portalp)
+        for (auto &direction : channel)
+            for (auto &p : direction)
+            {
+                bool fighter = slot > 2 && p.type == PT_FIGH && p.tmp >= 0 && p.tmp < MAX_FIGHTERS && sim.fighters[p.tmp].controller == slot;
+                if (!((slot == 1 && p.type == PT_STKM) || (slot == 2 && p.type == PT_STKM2) || fighter))
+                    continue;
+                if (slot == 1) sim.player.spwn = 0;
+                else if (slot == 2) sim.player2.spwn = 0;
+                else if (sim.fighters[p.tmp].spwn) { sim.fighters[p.tmp].spwn = 0; sim.fighcount--; }
+                p = Particle{};
+            }
     auto i = sim.create_part(-1, x, y, slot == 1 ? PT_STKM : slot == 2 ? PT_STKM2 : PT_FIGH);
     if (i >= 0 && slot > 2 && sim.parts[i].type == PT_FIGH && sim.parts[i].tmp >= 0 && sim.parts[i].tmp < MAX_FIGHTERS)
         sim.fighters[sim.parts[i].tmp].controller = slot;
@@ -112,20 +125,7 @@ void ApplyReset(Simulation &sim, const std::string &what)
     {
         for (int y = 0; y < YCELLS; y++) for (int x = 0; x < XCELLS; x++) sim.vx[y][x] = sim.vy[y][x] = 0;
     }
-    else if (what == "sparks")
-    {
-        for (int i = 0; i < NPART; i++)
-        {
-            auto &p = sim.parts[i];
-            if (p.type == PT_SPRK)
-            {
-                if (p.ctype >= 0 && p.ctype < PT_NUM && sd.elements[p.ctype].Enabled) { p.type = p.ctype; p.ctype = p.life = 0; }
-                else sim.kill_part(i);
-            }
-            else if (p.type == PT_WIRE) p.ctype = p.tmp = 0;
-        }
-        std::memset(sim.wireless, 0, sizeof(sim.wireless));
-    }
+    else if (what == "sparks") sim.ResetSparks();
     else if (what == "ambientHeat") sim.air->ClearAirH();
     else if (what == "temperature")
     {

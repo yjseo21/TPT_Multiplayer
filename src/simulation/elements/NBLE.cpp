@@ -87,7 +87,7 @@ static int update(UPDATE_FUNC_ARGS)
 					parts[j].tmp |= 4;
 				}
 			}
-			parts[i].temp = temp + 1750 + sim->rng.between(0, 499);
+			parts[i].temp = restrict_flt(temp + 1750 + sim->rng.between(0, 499), MIN_TEMP, MAX_TEMP);
 			sim->pv[y/CELL][x/CELL] += 50;
 		}
 	}

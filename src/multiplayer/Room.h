@@ -46,6 +46,11 @@ public:
     // (then call ApplyEarly()), false at the deadline.
     bool WaitForRequests(std::chrono::steady_clock::time_point until);
     void ApplyEarly();
+    // World thread: the rate to run physics at. The configured rate, unless a
+    // player's computer cannot follow it; then that player's pace, down to half
+    // the configured rate (a computer too slow for that jumps ahead instead of
+    // holding everyone back).
+    double PacedHz();
     // An applied edit could not be journaled; the room must stop (fail closed).
     bool Failed() const { return failed; }
     // After the WebSocket server has stopped: release players and queued edits.
@@ -82,6 +87,7 @@ private:
     uint64_t capture = 0, capturedTick = UINT64_MAX, capturedRevision = UINT64_MAX;
     unsigned capturedViews = 0;
     double measuredAt, tickMsTotal = 0, simHz = 0, tickMs = 0;
+    double pacedHz = 0, pacedAt = 0;
     uint64_t measuredTick, measuredSteps = 0;
     uint64_t savedTick = UINT64_MAX, savedRevision = UINT64_MAX, reportedSave = 0;
     std::string reportedSaveError;

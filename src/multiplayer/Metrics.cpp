@@ -23,6 +23,10 @@ Json::Value ClientMetrics::BeginProbe(double now)
     Json::Value request; request["type"] = "probe"; request["id"] = Json::UInt64(probe);
     return request;
 }
+bool RoomSlowed(const Json::Value &telemetry)
+{
+    return telemetry["pacedHz"].isNumeric() && telemetry["pacedHz"].asDouble() < telemetry["targetHz"].asDouble()*.85;
+}
 bool ClientMetrics::Telemetry(const Json::Value &v, double received)
 {
     if (!probe || !v["id"].isUInt64() || v["id"].asUInt64() != probe) return false;
@@ -32,7 +36,7 @@ bool ClientMetrics::Telemetry(const Json::Value &v, double received)
     for (const auto *key : {"simHz", "tickMs", "targetHz", "updateHz", "bandwidthKbps", "inFlight"})
         if (!v[key].isNumeric() || !std::isfinite(v[key].asDouble()) || v[key].asDouble() < 0 || v[key].asDouble() > 1000000)
             throw std::runtime_error("invalid telemetry measurement");
-    for (const auto *key : {"uploadKbps", "shareKbps", "streamWindow", "pacingHz", "frameAckMs"})
+    for (const auto *key : {"uploadKbps", "shareKbps", "streamWindow", "pacingHz", "frameAckMs", "pacedHz"})
         if (!v[key].isNull() && (!v[key].isNumeric() || !std::isfinite(v[key].asDouble()) || v[key].asDouble() < 0 || v[key].asDouble() > 1000000))
             throw std::runtime_error("invalid pacing measurement");
     if (!v["networkPaced"].isNull() && !v["networkPaced"].isBool())
@@ -64,6 +68,7 @@ Json::Value ClientMetrics::Sample(double now, const ReceivedCanvas &canvas, bool
     else if (!canvas.id) status = "WAITING FOR CANVAS";
     else if (!fresh) status = calibrated ? "TELEMETRY STALE" : "MEASURING";
     else if (paused) status = "PAUSED";
+    else if (!server["paused"].asBool() && RoomSlowed(server)) status = "ROOM SLOWED";
     else if (!server["paused"].asBool() && server["simHz"].asDouble() < server["targetHz"].asDouble()*.85) status = "SERVER SLOW";
     else if (server["bandwidthLimited"].asBool()) status = "BANDWIDTH LIMIT";
     else if (age > 500) status = "UPDATES DELAYED";
@@ -82,7 +87,7 @@ Json::Value ClientMetrics::Sample(double now, const ReceivedCanvas &canvas, bool
         if (canvas.id) result["frameAgeMs"] = age;
         for (const auto *key : {"simHz", "tickMs", "targetHz", "updateHz", "bandwidthKbps", "inFlight", "bandwidthLimited"})
             result[key] = server[key];
-        for (const auto *key : {"uploadKbps", "shareKbps", "streamWindow", "pacingHz", "frameAckMs", "networkPaced"})
+        for (const auto *key : {"uploadKbps", "shareKbps", "streamWindow", "pacingHz", "frameAckMs", "networkPaced", "pacedHz"})
             result[key] = server[key];
     }
     return result;

@@ -186,7 +186,8 @@ static int graphics(GRAPHICS_FUNC_ARGS)
 	{
 		*pixel_mode |= PMODE_BLEND;
 		*pixel_mode &= ~PMODE_FLAT;
-		*cola = (int)((((float)cpart->life)/((float)cpart->tmp2))*255.0f);
+		// Clamped: a negative life or tiny tmp2 (console) gave a ratio far outside an int.
+		*cola = (int)(std::clamp(((float)cpart->life)/((float)cpart->tmp2), 0.0f, 1.0f)*255.0f);
 	}
 	return 0;
 }

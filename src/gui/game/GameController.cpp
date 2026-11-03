@@ -848,6 +848,7 @@ void GameController::Blur()
 {
 	// Tell lua that mouse is up (even if it really isn't)
 	MouseUp(0, 0, 0, mouseUpBlur);
+	RoomStickmanStop();
 	commandInterface->HandleEvent(BlurEvent{});
 	gameModel->frameTime.reset();
 }
@@ -878,28 +879,7 @@ void GameController::ResetSpark()
 {
 	if (RoomReset("sparks"))
 		return;
-	auto &sd = SimulationData::CRef();
-	Simulation * sim = gameModel->GetSimulation();
-	for (int i = 0; i < NPART; i++)
-	{
-		if (sim->parts[i].type == PT_SPRK)
-		{
-			if (sim->parts[i].ctype >= 0 && sim->parts[i].ctype < PT_NUM && sd.elements[sim->parts[i].ctype].Enabled)
-			{
-				sim->parts[i].type = sim->parts[i].ctype;
-				sim->parts[i].ctype = sim->parts[i].life = 0;
-			}
-			else
-			{
-				sim->kill_part(i);
-			}
-		}
-		else if (sim->parts[i].type == PT_WIRE)
-		{
-			sim->parts[i].ctype = sim->parts[i].tmp = 0;
-		}
-	}
-	memset(sim->wireless, 0, sizeof(sim->wireless));
+	gameModel->GetSimulation()->ResetSparks();
 }
 
 void GameController::SwitchGravity()
@@ -2033,20 +2013,35 @@ bool GameController::RoomStickmanKey(int key, bool pressed)
 	}
 	else
 		comm &= key == SDLK_UP ? 11 : 7;
-	if (comm != roomStickmanComm || pcomm != roomStickmanPcomm)
+	// Sent on every press and release, even if it matches what was sent last: the
+	// room resets a stickman's keys when it is placed again or respawns, and a
+	// resynchronized room starts afresh, so a press that "changed nothing" here
+	// was the one that would have moved it.
+	std::string why;
+	if (room->Stickman(comm, pcomm, why))
 	{
-		std::string why;
-		if (room->Stickman(comm, pcomm, why))
-		{
-			roomStickmanComm = comm;
-			roomStickmanPcomm = pcomm;
-		}
-		else
-			RoomNotice(ByteString(why).FromUtf8());
+		roomStickmanComm = comm;
+		roomStickmanPcomm = pcomm;
 	}
+	else
+		RoomNotice(ByteString(why).FromUtf8());
 	return true;
 #else
 	return false;
+#endif
+}
+
+void GameController::RoomStickmanStop()
+{
+#ifdef TPT_GAME_MULTIPLAYER
+	// Keys let go elsewhere (another window, the player's own canvas) never reach
+	// the room: stop this player's stickman rather than leave it walking.
+	if (room && roomStickmanComm)
+	{
+		std::string why;
+		if (room->Stickman(0, roomStickmanComm, why))
+			roomStickmanPcomm = roomStickmanComm, roomStickmanComm = 0;
+	}
 #endif
 }
 
@@ -2251,6 +2246,8 @@ void GameController::ToggleRoom()
 		return;
 	}
 #ifdef TPT_GAME_MULTIPLAYER
+	if (showRoom)
+		RoomStickmanStop();
 	showRoom = !showRoom;
 	gameModel->ShowSimulation(showRoom ? room->Shown() : nullptr, room->Paused());
 	CreateDebugInfo();

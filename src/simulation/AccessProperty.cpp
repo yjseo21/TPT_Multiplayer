@@ -1,11 +1,16 @@
 #include "AccessProperty.h"
 #include "simulation/Simulation.h"
+#include "simulation/ElementClasses.h"
 
 void AccessProperty::Set(Simulation *sim, int i) const
 {
 	auto &part = sim->parts[i];
 	auto &prop = Particle::GetProperties()[propertyIndex];
 	auto *ptr = (reinterpret_cast<char *>(&part) + prop.Offset);
+	// A fighter's tmp is its entry in the fighter table: changing it leaked the
+	// fighter (a ghost that blocks new ones) or shared one between two particles.
+	if (propertyIndex == FIELD_TMP && part.type == PT_FIGH)
+		return;
 	if (propertyIndex == FIELD_TYPE)
 	{
 		sim->part_change_type(i, int(part.x + 0.5f), int(part.y + 0.5f), std::get<int>(propertyValue));

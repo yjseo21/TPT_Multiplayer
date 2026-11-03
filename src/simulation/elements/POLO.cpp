@@ -66,7 +66,7 @@ static int update(UPDATE_FUNC_ARGS)
 				parts[i].life = COOLDOWN;
 				parts[i].tmp++;
 
-				parts[i].temp = ((parts[i].temp + parts[s].temp) + 600.0f) / 2.0f;
+				parts[i].temp = restrict_flt(((parts[i].temp + parts[s].temp) + 600.0f) / 2.0f, MIN_TEMP, MAX_TEMP);
 				parts[s].temp = parts[i].temp;
 			}
 		}
@@ -77,7 +77,7 @@ static int update(UPDATE_FUNC_ARGS)
 			int s = sim->create_part(-3, x, y, PT_NEUT);
 			if (s >= 0)
 			{
-				parts[i].temp = ((parts[i].temp + parts[ID(r)].temp + parts[ID(r)].temp) + 600.0f) / 3.0f;
+				parts[i].temp = restrict_flt(((parts[i].temp + parts[ID(r)].temp + parts[ID(r)].temp) + 600.0f) / 3.0f, MIN_TEMP, MAX_TEMP);
 				parts[i].life = COOLDOWN;
 				parts[i].tmp++;
 

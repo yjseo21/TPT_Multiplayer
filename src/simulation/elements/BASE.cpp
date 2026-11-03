@@ -73,7 +73,9 @@ static int update(UPDATE_FUNC_ARGS)
 		if (sim->rng.chance(1, 20))
 		{
 			//This way we preserve the total amount of concentrated BASE in the solution
-			if (sim->rng.chance(1, parts[i].life+1))
+			// (a negative concentration, from the console or property tool, made this a
+			// draw out of 0: a division by zero that crashed the game and room servers)
+			if (parts[i].life < 0 || sim->rng.chance(1, parts[i].life+1))
 			{
 				//@ BASE -> BOYL
 				sim->createPartTempVel(i, x, y, PT_BOYL);
@@ -83,7 +85,7 @@ static int update(UPDATE_FUNC_ARGS)
 			{
 				parts[i].life++;
 				//Enthalpy of vaporization
-				parts[i].temp -= 20.0f / ((float)parts[i].life);
+				parts[i].temp = restrict_flt(parts[i].temp - 20.0f / std::max(1.0f, float(parts[i].life)), MIN_TEMP, MAX_TEMP);
 			}
 		}
 	}
@@ -127,7 +129,7 @@ static int update(UPDATE_FUNC_ARGS)
 							//@ BASE + WATR/DSTW/CBNW -> 2xBASE
 							sim->createPartTempVel(ID(r), x+rx, y+ry, PT_BASE);
 							parts[ID(r)].life = saturh;
-							parts[ID(r)].temp += ((float)saturh)/10.0f;
+							parts[ID(r)].temp = restrict_flt(parts[ID(r)].temp + ((float)saturh)/10.0f, MIN_TEMP, MAX_TEMP);
 							parts[i].life -= saturh;
 						}
 					} //Base neutralizes acid

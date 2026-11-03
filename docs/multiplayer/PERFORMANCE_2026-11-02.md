@@ -149,3 +149,69 @@ Verification:
   MSVC, Apple clang on both CPUs, and GCC all compute it.
 
 `BuildId` is now `tpt-c205becb-mp3-ingame7`.
+
+## Heavy rooms and four stickmen (1.0.5)
+
+The reconnect loop came back in heavy rooms. It wasn't divergence: six
+explosion and full-screen scenes (`tpt-benchmark --heavy`: C-4, nitro,
+gunpowder, bombs, thunder over water, a full screen of water, sand, oil and
+lava) give identical fingerprints after 600 ticks on Linux GCC, Linux clang
+and Windows (MinGW, UCRT).
+
+The cause was speed. The full-screen scene takes 17-23 ms a tick on the test
+machine, more than a 60 Hz tick, so even the server runs it at about 45-55
+steps a second. A player's computer must run the same physics and draw the
+picture too. One that is even slightly slower than the server can never catch
+up: after 10 s behind it downloaded the room again, fell behind again, and so
+on every 30 s.
+
+Fixes:
+- **Room pacing.** Every 2 s each player's game reports how many ticks a second
+  its computer can run (its physics time per tick, with a quarter of the time
+  left for drawing). The server runs the room at 85% of the slowest report, so
+  that player has headroom to catch up. It never goes below half the
+  configured rate: a computer slower than that is left to jump ahead rather
+  than slowing everyone down. The room slows at once and speeds back up by
+  4 steps/s each second. Players see **ROOM SLOWED TO n/60 STEPS/S**; the
+  server log shows `paced_hz`.
+- **Jumping ahead backs off:** 30 s, then 60, 120 and 240 s between jumps, so
+  a computer that is too slow no longer downloads the room every 30 s.
+- **Faster physics:** the random number generator and the heat-conduction
+  checks (`IsHeatInsulator`, `HeatCapacityOf`) are now inline. Full-screen
+  ticks take 4.4% fewer instructions. Results are bit-identical: the pinned
+  fingerprint is unchanged. Link-time optimization gave no gain, and clang
+  and GCC build equally fast code here, so neither changed.
+- **Stickmen of players 3 and 4 (fighters) through portals:** coming out of
+  a portal reallocated the fighter, which usually reused its own slot and
+  cleared its player. The fighter then went back to its AI. Fixed in `PRTO`.
+- **Placing a stickman that is inside a portal:** for players 1 and 2 the new
+  one never appeared (the portal still held the stickman); for players 3 and 4
+  a second steered fighter appeared. Placing now removes the one in the portal.
+
+- **Element counts doubled after edits in a fresh, cleared or paused room.**
+  An edit's map refresh recounted every element without clearing the counts
+  first (only a physics tick cleared them), and while paused nothing corrected
+  them. One STKM then counted as two, so placing a stickman silently failed.
+  The recount now starts from zero. Physics that reads the counts changes
+  with it, and with the fixes in `BUG_HUNT_2026-11-03.md`. The pinned
+  fingerprint is now `3ef3ab781baff060`, the same on Linux GCC, Linux clang
+  and Windows UCRT.
+- **Reconnecting says why.** The status line shows the reason, for example
+  "RECONNECTING (the server closed the room, perhaps to restart)" or the
+  connection error, instead of only RECONNECTING.
+
+Drawing, pausing and restarting the server (autosave and `--recover`, as the
+user service runs it) was tried with the headless client, the real game, a
+Windows client, the real systemd unit, a 100 ms link and every element: the
+player always came back to the paused room and verified fingerprints after
+unpausing.
+
+Tests:
+- `multiplayer-room-pace`: a player whose ticks take 15 ms longer slows the
+  room to about 38 steps a second, never falls behind, jumps ahead or
+  resyncs; the room returns to 60 once that player leaves.
+- `multiplayer-core`: four stickmen walk at once, each its own way; a player's
+  fighter keeps its player through a portal; placing a stickman held in a
+  portal leaves exactly one.
+
+`BuildId` is now `tpt-c205becb-mp3-ingame8`.

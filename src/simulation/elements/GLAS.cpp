@@ -81,7 +81,7 @@ static int update(UPDATE_FUNC_ARGS)
 			if (np>-1)
 			{
 				sim->pv[y/CELL][x/CELL] -= 1.0f;
-				parts[i].temp += 200.0f;
+				parts[i].temp = restrict_flt(parts[i].temp + 200.0f, MIN_TEMP, MAX_TEMP);
 			}
 		}
 	}

@@ -6,6 +6,7 @@
 #include "StateDigest.h"
 #include <ixwebsocket/IXWebSocket.h>
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 
 namespace multiplayer
@@ -73,6 +74,12 @@ void Room::OnMessage(const std::shared_ptr<Peer> &p, const ix::WebSocketMessage 
             p->Acknowledge(v["frame"].asUInt64()); return;
         }
         if (v["type"] == "probe") { Probe(p, v); return; }
+        if (v["type"] == "pace")
+        {
+            if (!v["hz"].isNumeric() || !std::isfinite(v["hz"].asDouble())) throw std::runtime_error("invalid pace");
+            p->paceHz = std::clamp(v["hz"].asDouble(), 0.0, 1000.0); p->paceAt = MonotonicSeconds();
+            return;
+        }
         if (v["type"] == "paste_chunk") { PasteChunk(p, v); return; }
         if (v["type"] == "resync") { p->StreamControl(); p->ResetStream(); return; }
         if (v["type"] == "desync_report") { DesyncReport(p, v); return; }
@@ -549,6 +556,26 @@ void Room::SealTick(const std::vector<std::shared_ptr<Peer>> &active)
         lastSealedReset = world.resetGeneration; lastSealedPaused = world.paused;
     }
 }
+double Room::PacedHz()
+{
+    auto now = MonotonicSeconds();
+    double full = config.ticks, floor = full / 2, target = full;
+    {
+        std::lock_guard lock(peersMutex);
+        for (auto &p : peers)
+        {
+            // A recent report from a synchronized player; headroom to catch up.
+            if (!p->authenticated || p->closed || !p->replica || p->needsReplicaBootstrap || now - p->paceAt > 6) continue;
+            auto follows = p->paceHz * .85;
+            if (follows >= floor) target = std::min(target, follows);
+        }
+    }
+    // Slow down at once; speed back up gradually (a few ticks a second each second).
+    if (!pacedHz || target <= pacedHz) pacedHz = target;
+    else pacedHz = std::min(target, pacedHz + 4 * std::clamp(now - pacedAt, 0.0, 1.0));
+    pacedAt = now;
+    return pacedHz;
+}
 void Room::Measure()
 {
     if (MonotonicSeconds()-measuredAt >= 1)
@@ -560,7 +587,7 @@ void Room::Measure()
     }
     {
         std::lock_guard lock(telemetryMutex);
-        telemetry["simHz"] = simHz; telemetry["tickMs"] = tickMs;
+        telemetry["simHz"] = simHz; telemetry["tickMs"] = tickMs; telemetry["pacedHz"] = pacedHz;
         telemetry["paused"] = world.paused; telemetry["revision"] = Json::UInt64(world.revision);
     }
 }
@@ -618,7 +645,7 @@ void Room::Stats(const std::vector<std::shared_ptr<Peer>> &active)
         uint64_t sent = 0, full = 0, delta = 0, repeats = 0, webp = 0;
         for (auto &p : active) { sent += p->bytesSent.load(); full += p->fullFrames; delta += p->deltaFrames; repeats += p->repeats; webp += p->webpFrames; }
         std::cout << "tick=" << world.tick << " revision=" << world.revision << " players=" << active.size()
-            << " sim_hz=" << simHz << " tick_ms=" << tickMs
+            << " sim_hz=" << simHz << " paced_hz=" << pacedHz << " tick_ms=" << tickMs
             << " full=" << full << " delta=" << delta << " repeat=" << repeats << " webp=" << webp
             << " active_connection_bytes_sent=" << sent
             << " longest_step_ms=" << longestStepMs << " snapshots=" << snapshotCaptures

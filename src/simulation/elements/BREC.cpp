@@ -57,7 +57,7 @@ static int update(UPDATE_FUNC_ARGS)
 				sim->part_change_type(i, x, y, PT_EXOT);
 				parts[i].life = 1000;
 			}
-			parts[i].temp += (sim->pv[y/CELL][x/CELL])/8;
+			parts[i].temp = restrict_flt(parts[i].temp + (sim->pv[y/CELL][x/CELL])/8, MIN_TEMP, MAX_TEMP);
 		}
 
 	}

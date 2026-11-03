@@ -114,8 +114,18 @@ std::string GameSession::Status()
 {
     auto sample = session.Sample();
     std::string status = sample["status"].asString();
-    if (status == "TOO SLOW")
+    if (status == "RECONNECTING" && !sample["reconnectReason"].asString().empty())
+    {
+        // Say why: a server that is down, refusing this player, or unreachable all look alike otherwise.
+        auto reason = sample["reconnectReason"].asString();
+        if (reason.size() > 90) reason = reason.substr(0, 87) + "...";
+        status = "RECONNECTING (" + reason + ")";
+    }
+    else if (status == "TOO SLOW")
         status = "TOO SLOW FOR THIS ROOM (behind for " + std::to_string(int(sample["behindSeconds"].asDouble())) + " s)";
+    else if (status == "ROOM SLOWED")
+        status = "ROOM SLOWED TO " + std::to_string(int(sample["pacedHz"].asDouble() + .5)) + "/" +
+            std::to_string(sample["targetHz"].asInt()) + " STEPS/S (A PLAYER'S COMPUTER SETS THE PACE)";
     else if (status == "CATCHING UP")
         status = "CATCHING UP (" + std::to_string(int(sample["catchUpSeconds"].asDouble() + .5)) + " s to go)";
     else if (status == "SYNCHRONIZING" && sample["downloadBytes"].asUInt64())
@@ -167,9 +177,17 @@ bool GameSession::SendStickman(Json::Value command, std::string &why)
         operationTokens -= 1; workTokens -= 1;
         return true;
     }
-    // Saturated: queue it, and keep later stickman commands behind it.
-    if (!Enqueue({command}, why)) return false;
+    // Saturated: queue it ahead of strokes (behind earlier stickman commands, so
+    // they stay in order). Never refused for the stroke budget: a dropped key
+    // release would leave the stickman walking.
+    auto at = outbox.begin();
+    while (at != outbox.end() && !at->command.isMember("type") &&
+           (at->command["op"] == "stickman" || at->command["op"] == "stickman_spawn"))
+        ++at;
+    outbox.insert(at, {std::move(command), 1});
+    queuedWork += 1;
     ++stickmanQueued;
+    Flush();
     return true;
 }
 bool GameSession::Sign(int index, int expectX, int expectY, bool remove, const std::string &text, int x, int y, int justification, std::string &why)

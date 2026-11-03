@@ -164,6 +164,14 @@ void Simulation::Load(const GameSave *save, bool includePressure, Vec2<int> bloc
 		{
 			continue;
 		}
+		// Creating a fighter reserved a fighter for it; the saved one is set up
+		// below with its own, so release this one (each loaded fighter used two,
+		// leaving ghosts and loading only half of a save's fighters).
+		if (tempPart.type == PT_FIGH && parts[i].type == PT_FIGH && parts[i].tmp >= 0 && parts[i].tmp < MAX_FIGHTERS && fighters[parts[i].tmp].spwn)
+		{
+			fighters[parts[i].tmp].spwn = 0;
+			fighcount--;
+		}
 		parts[i] = tempPart;
 
 
@@ -234,8 +242,10 @@ void Simulation::Load(const GameSave *save, bool includePressure, Vec2<int> bloc
 			}
 			else
 			{
-				// Should not be possible because we verify with CanAlloc above this
-				parts[i].type = 0;
+				// Should not be possible because we verify with CanAlloc above this.
+				// Remove it properly: a bare type 0 left a counted, mapped dead particle.
+				parts[i].tmp = -1; // no fighter to free
+				kill_part(i);
 			}
 			break;
 		}
@@ -1777,6 +1787,35 @@ Simulation::GetNormalResult Simulation::get_normal_interp(Sim &sim, int pt, floa
 template
 Simulation::GetNormalResult Simulation::get_normal_interp<false, const Simulation>(const Simulation &sim, int pt, float x0, float y0, float dx, float dy);
 
+void Simulation::ResetSparks()
+{
+	auto &sd = SimulationData::CRef();
+	for (int i = 0; i < NPART; i++)
+	{
+		auto &p = parts[i];
+		if (p.type == PT_SPRK)
+		{
+			// A spark of nothing (ctype 0) or of a removed element has nothing to go back to.
+			if (p.ctype > 0 && p.ctype < PT_NUM && sd.elements[p.ctype].Enabled)
+			{
+				if (elementCount[PT_SPRK])
+					elementCount[PT_SPRK]--;
+				elementCount[p.ctype]++;
+				p.type = p.ctype;
+				p.ctype = p.life = 0;
+				int x = int(p.x + 0.5f), y = int(p.y + 0.5f);
+				if (InBounds(x, y) && pmap[y][x] && ID(pmap[y][x]) == i)
+					pmap[y][x] = PMAP(i, p.type);
+			}
+			else
+				kill_part(i);
+		}
+		else if (p.type == PT_WIRE)
+			p.ctype = p.tmp = 0;
+	}
+	memset(wireless, 0, sizeof(wireless));
+}
+
 void Simulation::kill_part(int i)//kills particle number i
 {
 	if (i < 0 || i >= NPART)
@@ -1890,6 +1929,9 @@ int Simulation::create_part(int p, int x, int y, int t, int v)
 			FloodINST(x, y);
 			return index;
 		}
+		if (elementCount[type])
+			elementCount[type]--;
+		elementCount[PT_SPRK]++;
 		parts[index].type = PT_SPRK;
 		parts[index].life = 4;
 		parts[index].ctype = type;
@@ -2600,6 +2642,9 @@ bool SimulationImpl::TransitionPhase(int i, const Neighbourhood &neighbourhood)
 						else
 						{
 							t = PT_LAVA;
+							if (elementCount[PT_BRMT])
+								elementCount[PT_BRMT]--;
+							elementCount[PT_TUNG]++;
 							parts[i].type = PT_TUNG;
 						}
 					}
@@ -3383,6 +3428,11 @@ void Simulation::RecalcFreeParticles(bool do_life_dec)
 	memset(photons, 0, sizeof(photons));
 
 	NUM_PARTS = 0;
+	// A recount starts from zero here, not only in BeforeSim's physics branch:
+	// a recount due at an edit (a fresh, cleared or paused world) otherwise added
+	// every particle to its existing count, and one STKM counted as two.
+	if (elementRecount)
+		std::fill(elementCount, elementCount+PT_NUM, 0);
 	auto &sd = SimulationData::CRef();
 	auto &elements = sd.elements;
 	//the particle loop that resets the pmap/photon maps every frame, to update them.

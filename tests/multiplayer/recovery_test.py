@@ -161,7 +161,9 @@ def run(d):
         directory.chmod(0o700)
         files = until(lambda: saved_after(previous), "autosave did not retry after storage recovered")
         previous = files[-1].name
-        assert len(files) <= 3
+        # The new backup is committed before the oldest is removed (never fewer than
+        # three good ones), so for a moment there are four.
+        until(lambda: len(list(directory.glob("*.cps"))) <= 3, "backup retention was not applied after the retry")
         crash()
         # Incomplete temp files are ignored; a corrupt committed file falls back.
         latest = sorted(directory.glob("*.cps"))[-1]

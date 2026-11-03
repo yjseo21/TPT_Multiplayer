@@ -67,7 +67,7 @@ def main():
             n = rows(root / "Normal.jsonl")
             synced = [r for r in n if r.get("localTick")]
             assert len(synced) >= 20, [(r["elapsedSeconds"], r.get("status")) for r in n]
-            assert all(r["status"] in ("LOCAL SIM", "SERVER SLOW", "CATCHING UP") and r["resyncs"] == 0 for r in synced), \
+            assert all(r["status"] in ("LOCAL SIM", "SERVER SLOW", "ROOM SLOWED", "CATCHING UP") and r["resyncs"] == 0 for r in synced), \
                 [(round(r["elapsedSeconds"]), r["status"], r["resyncs"]) for r in synced]
             assert n[-1]["connections"] == 1, n[-1]
             assert max(r.get("behindSeconds", 0) for r in synced) < 1, [r.get("behindSeconds") for r in synced]

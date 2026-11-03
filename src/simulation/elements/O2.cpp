@@ -61,21 +61,21 @@ static int update(UPDATE_FUNC_ARGS)
 
 				if (TYP(r)==PT_FIRE)
 				{
-					parts[ID(r)].temp += sim->rng.between(0, 99);
+					parts[ID(r)].temp = restrict_flt(parts[ID(r)].temp + sim->rng.between(0, 99), MIN_TEMP, MAX_TEMP);
 					if (parts[ID(r)].tmp & 0x01)
 						parts[ID(r)].temp = 3473;
 					parts[ID(r)].tmp |= 2;
 
 					//@ O2 + FIRE -> 2xFIRE
 					sim->create_part(i,x,y,PT_FIRE);
-					parts[i].temp += sim->rng.between(0, 99);
+					parts[i].temp = restrict_flt(parts[i].temp + sim->rng.between(0, 99), MIN_TEMP, MAX_TEMP);
 					parts[i].tmp |= 2;
 				}
 				else if (TYP(r)==PT_PLSM && !(parts[ID(r)].tmp&4))
 				{
 					//@ O2 + PLSM -> FIRE + PLSM
 					sim->create_part(i,x,y,PT_FIRE);
-					parts[i].temp += sim->rng.between(0, 99);
+					parts[i].temp = restrict_flt(parts[i].temp + sim->rng.between(0, 99), MIN_TEMP, MAX_TEMP);
 					parts[i].tmp |= 2;
 				}
 			}

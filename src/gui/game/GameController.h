@@ -91,6 +91,7 @@ private:
 	void CloseRoomSignWindow();
 	// While the room is shown: arrow keys steer this player's stickman.
 	bool RoomStickmanKey(int key, bool pressed);
+	void RoomStickmanStop();
 	int roomStickmanComm = 0, roomStickmanPcomm = 0;
 	void EndRoom(String why);
 	// Credentials of the latest join, offered again by the dialog (never saved).

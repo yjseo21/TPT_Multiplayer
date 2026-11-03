@@ -92,7 +92,7 @@ static int update(UPDATE_FUNC_ARGS)
 							if(newtemp < 0){
 								newtemp = 0;
 							}
-							parts[i].temp += newtemp;
+							parts[i].temp = restrict_flt(parts[i].temp + newtemp, MIN_TEMP, MAX_TEMP);
 							parts[i].life--;
 							switch (rt)
 							{

@@ -42,7 +42,11 @@ mp_determinism = executable('tpt-determinism', '../../tests/multiplayer/Determin
   override_options: target_options)
 # Every platform must compute this exact fingerprint (the same on GCC, clang
 # and Windows UCRT): servers and players on different systems share one world.
-test('multiplayer-determinism', mp_determinism, args: ['--verbose', '--expect', '955a824625c12c83'], timeout: 300)
+test('multiplayer-determinism', mp_determinism, args: ['--verbose', '--expect', '3ef3ab781baff060'], timeout: 300)
+# Not a test: a long sweep of every element pair and player action (see the file).
+executable('tpt-bughunt', '../../tests/multiplayer/BugHunt.cpp',
+  dependencies: mp_core, cpp_args: project_cpp_args + mp_codec_args, link_args: mp_link_args,
+  override_options: target_options)
 mp_checkpoint_tests = executable('tpt-checkpoint-tests', '../../tests/multiplayer/CheckpointTests.cpp',
   dependencies: mp_core, cpp_args: project_cpp_args + mp_codec_args, link_args: mp_link_args,
   override_options: target_options)
@@ -126,6 +130,10 @@ test('multiplayer-gravity-room', python3_prog,
 test('multiplayer-slow-player', python3_prog,
   args: [files('../../tests/multiplayer/slow_player_test.py'), mp_server, mp_client],
   timeout: 90, is_parallel: false)
+
+test('multiplayer-room-pace', python3_prog,
+  args: [files('../../tests/multiplayer/room_pace_test.py'), mp_server, mp_client],
+  timeout: 120, is_parallel: false)
 
 test('multiplayer-distant-join', python3_prog,
   args: [files('../../tests/multiplayer/distant_join_test.py'), mp_server, mp_client],

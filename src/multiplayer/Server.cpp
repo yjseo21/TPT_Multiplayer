@@ -187,10 +187,10 @@ int main(int argc, char **argv)
         else if (options.cert.empty())
             std::cout << "Plain ws:// room: traffic, including the room password, is not encrypted." << std::endl;
         auto began = Clock::now(), nextTick = began;
-        auto tickPeriod = std::chrono::nanoseconds(1000000000 / options.ticks);
         while (!stopping && !room.Failed() && (!options.runFor || Clock::now() - began < std::chrono::seconds(options.runFor)))
         {
             room.Step();
+            auto tickPeriod = std::chrono::nanoseconds(int64_t(1e9 / room.PacedHz()));
             nextTick += tickPeriod;
             // A late wake-up (coarse timers on a busy machine) is made up with
             // immediate steps, so the room keeps its rate; only when far behind

@@ -28,5 +28,7 @@ public:
     void Frame() { ++windowFrames; }
     Json::Value Sample(double now, const ReceivedCanvas &canvas, bool ready, bool resyncing);
 };
+// The room runs slower than configured to let a player's computer keep up.
+bool RoomSlowed(const Json::Value &telemetry);
 std::array<std::string, 3> MetricLines(const Json::Value &sample);
 }

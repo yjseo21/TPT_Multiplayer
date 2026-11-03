@@ -29,6 +29,9 @@ constexpr double CatchUpBudget = .012;
 // Unable to catch up for this long, a computer jumps to the room's present;
 // at most this often, so a merely busy moment never causes repeated rejoins.
 constexpr double SkipAheadSeconds = 10, SkipAheadInterval = 30;
+// The share of a computer's time its local physics may take while keeping pace
+// (the rest draws the picture), as reported to the room for pacing.
+constexpr double PhysicsShare = .75;
 }
 // Written by the socket's callback thread, drained by Update().
 struct Session::Mailbox
@@ -227,11 +230,13 @@ void Session::Lost()
         mailbox->incomingBytes = 0; mailbox->disconnected = mailbox->permanentFailure = false;
     }
     RetireReplica(); desyncWaitUntil = 0; behindSince = 0; behindSeconds = 0; catchingUp = 0;
+    paceSince = paceSeconds = 0; paceSteps = 0;
     edits.Disconnect(); sentAt.clear();
     ready = admin = roomLocked = waitingForKeyframe = false;
     canvas.id = 0; attempting = false;
     players = Json::Value(Json::arrayValue); presenceEnabled = false; lastCursor = Json::Value();
     metrics = ClientMetrics(MonotonicSeconds());
+    lastFailure = reason == "Normal closure" ? "the server closed the room, perhaps to restart" : reason;
     double delay = std::min(10.0, double(1U << std::min(failures++, 4U)));
     retryAt = MonotonicSeconds()+delay;
     std::cout << "Connection interrupted (" << reason << "); retry in " << delay << " seconds. Unconfirmed edits are not replayed.\n" << std::flush;
@@ -393,13 +398,34 @@ void Session::Pump()
         auto budget = std::max(CatchUpBudget, (backlog > lead + 2 ? 1. : .75)*dt);
         uint64_t ran = 0;
         if (!steps) replica->Pump(0); // edits and seals at the current tick
+        auto physicsStart = MonotonicSeconds();
         while (ran < steps)
         {
-            if (options.debugStepDelayMs) std::this_thread::sleep_for(std::chrono::duration<double, std::milli>(options.debugStepDelayMs));
+            if (options.debugStepDelayMs)
+            {
+                // Busy, like real physics (and exact: sleeping rounds to the system timer).
+                auto until = MonotonicSeconds()+options.debugStepDelayMs/1000;
+                while (MonotonicSeconds() < until) {}
+            }
             auto stepped = replica->Pump(1);
             if (!stepped) break;
             ran += stepped;
             if (MonotonicSeconds()-now > budget) break;
+        }
+        // Tell the room how fast this computer can follow it: the room runs no
+        // faster than its slowest player (within limits), so a heavy world slows
+        // everyone a little instead of sending one player into endless catch-up.
+        if (ran) { paceSteps += ran; paceSeconds += MonotonicSeconds()-physicsStart; }
+        if (!paceSince) paceSince = now;
+        else if (now-paceSince >= 2)
+        {
+            if (paceSteps >= 10 && paceSeconds > 0)
+            {
+                Json::Value pace; pace["type"] = "pace";
+                pace["hz"] = std::clamp(PhysicsShare*double(paceSteps)/paceSeconds, 1.0, 1000.0);
+                SendControl(pace);
+            }
+            paceSince = now; paceSeconds = 0; paceSteps = 0;
         }
         tickCredit = std::max(tickCredit-double(ran), -1.0);
         if (ran == backlog) tickCredit = std::min(tickCredit, 1.0);
@@ -416,7 +442,10 @@ void Session::Pump()
         { behindSince = now; behindBacklog = behindBy; }
         catchingUp = behindBy > lead + 30 ? behindBy : 0;
         behindSeconds = behindSince ? now-behindSince : 0;
-        if (!options.debugNoSkipAhead && behindSeconds > SkipAheadSeconds && now-lastSkipAhead > SkipAheadInterval)
+        // Each further jump waits twice as long: a computer too slow for the room
+        // even at its slowest pace would otherwise download it again and again.
+        auto skipInterval = SkipAheadInterval * double(1U << std::min<uint64_t>(skipAheads, 3));
+        if (!options.debugNoSkipAhead && behindSeconds > SkipAheadSeconds && now-lastSkipAhead > skipInterval)
         {
             // Rejoin from a fresh snapshot of the room's present. Cheap for the
             // room: only a raw copy happens on its thread.
@@ -524,7 +553,7 @@ void Session::AddLocalStatus(Json::Value &out) const
                 out["simHz"].asDouble() < out["targetHz"].asDouble()*.85;
             bool tooSlow = behindSeconds > 3;
             out["status"] = replica->world.paused ? "PAUSED" : tooSlow ? "TOO SLOW" :
-                catchingUp ? "CATCHING UP" : (slow ? "SERVER SLOW" : "LOCAL SIM");
+                catchingUp ? "CATCHING UP" : RoomSlowed(out) ? "ROOM SLOWED" : (slow ? "SERVER SLOW" : "LOCAL SIM");
             out["behindSeconds"] = behindSeconds;
             out["catchUpSeconds"] = catchingUp / std::max(tickRate, 1.0);
             out["paused"] = replica->world.paused;
@@ -552,6 +581,7 @@ Json::Value Session::Sample()
     {
         sample["status"] = "RECONNECTING";
         sample["retrySeconds"] = attempting ? 0.0 : std::max(0.0, retryAt-MonotonicSeconds());
+        sample["reconnectReason"] = lastFailure;
     }
     // Local simulation is synchronized by its replica (the game shows the world
     // itself and publishes no picture); video needs a current frame.

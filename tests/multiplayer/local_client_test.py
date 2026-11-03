@@ -126,7 +126,7 @@ def scenario_four_players():
             watcher = rows(root / "local-watcher.jsonl")
             assert max(r["receiveMbps"] for r in watcher[2:]) < 0.5, [r["receiveMbps"] for r in watcher]
             # Seal batching: far fewer seal messages than physics ticks while running.
-            running = [r for r in watcher if r.get("status") in ("LOCAL SIM", "SERVER SLOW", "CATCHING UP") and "localTick" in r]
+            running = [r for r in watcher if r.get("status") in ("LOCAL SIM", "SERVER SLOW", "ROOM SLOWED", "CATCHING UP") and "localTick" in r]
             # Seals per second, not per tick: a slow server (about 20 ticks/s on some CI
             # machines) leaves nothing to merge. 50 ms batches allow about 20/s plus
             # fingerprint seals; unbatched would be about one per tick (60/s).
@@ -179,7 +179,7 @@ def scenario_divergence_recovery():
             assert any(r["status"] in ("RECONNECTING", "RESYNCHRONIZING", "SYNCHRONIZING") for r in samples), samples
             # Fingerprints keep verifying after the fresh checkpoint.
             # Any synchronized, running state counts (slow CI machines report SERVER SLOW).
-            resynced = [r for r in samples if r["resyncs"] == 1 and r["status"] in ("LOCAL SIM", "SERVER SLOW", "CATCHING UP")]
+            resynced = [r for r in samples if r["resyncs"] == 1 and r["status"] in ("LOCAL SIM", "SERVER SLOW", "ROOM SLOWED", "CATCHING UP")]
             assert resynced and resynced[-1]["verifiedHashes"] > resynced[0]["verifiedHashes"], samples
             honest = rows(root / "honest.jsonl")[-1]
             # One fingerprint per 60 ticks; an overloaded CI machine may run the room slower.

@@ -5,7 +5,7 @@
 static int update(UPDATE_FUNC_ARGS);
 static bool createAllowed(ELEMENT_CREATE_ALLOWED_FUNC_ARGS);
 static void changeType(ELEMENT_CHANGETYPE_FUNC_ARGS);
-static void Free(Simulation *sim, unsigned char i);
+static void Free(Simulation *sim, int i);
 
 void Element::Element_FIGH()
 {
@@ -175,7 +175,7 @@ static void changeType(ELEMENT_CHANGETYPE_FUNC_ARGS)
 	}
 	else
 	{
-		Free(sim, (unsigned char)sim->parts[i].tmp);
+		Free(sim, sim->parts[i].tmp);
 	}
 }
 
@@ -202,9 +202,11 @@ int Element_FIGH_Alloc(Simulation *sim)
 	else return -1;
 }
 
-static void Free(Simulation *sim, unsigned char i)
+static void Free(Simulation *sim, int i)
 {
-	if (sim->fighters[i].spwn)
+	// A fighter that never got one (tmp -1) has none to free: as an unsigned char it was
+	// fighters[255], past the end of the array.
+	if (i >= 0 && i < MAX_FIGHTERS && sim->fighters[i].spwn)
 	{
 		sim->fighters[i].spwn = 0;
 		sim->fighcount--;

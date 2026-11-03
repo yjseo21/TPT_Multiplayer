@@ -439,6 +439,90 @@ int main()
             auto record = ParseCommand(ParseJson(JsonText(RecordCommand(ParseCommand(steer, false)))), false);
             Check(record.kind == Command::Stickman && record.slot == 3 && record.comm == 2, "stickman commands are recorded with their slot");
             Reject([&] { auto bad = steer; bad["comm"] = 16; ParseCommand(bad, false); });
+            // Four players at once: each walks their own stickman, nobody else's.
+            {
+                World four;
+                for (int y = 300; y < 320; ++y) for (int x = CELL; x < XRES-CELL; ++x) four.sim->create_part(-1, x, y, PT_DMND);
+                for (int slot = 1; slot <= 4; ++slot)
+                {
+                    spawn["slot"] = slot; spawn["x1"] = std::array{0, 360, 120, 480, 240}[slot]; spawn["y1"] = 280; // even ones left of odd ones
+                    four.Apply(ParseCommand(spawn, false));
+                }
+                // Edits recount a fresh world's elements from zero (they were counted twice,
+                // so a fresh or paused room refused to place a stickman).
+                {
+                    int floor = 0;
+                    for (int i = 0; i < NPART; ++i) floor += four.sim->parts[i].type == PT_DMND;
+                    Check(four.sim->elementCount[PT_STKM] == 1 && four.sim->elementCount[PT_STKM2] == 1 &&
+                          four.sim->elementCount[PT_FIGH] == 2 && four.sim->elementCount[PT_DMND] == floor,
+                          "element counts after the first edits in a fresh room are exact");
+                }
+                for (int t = 0; t < 60; ++t) four.Advance();
+                std::array<float, 5> start{};
+                for (int slot = 1; slot <= 4; ++slot)
+                {
+                    auto *stickman = RoomStickman(*four.sim, slot);
+                    Check(stickman, "each of four players has a stickman");
+                    start[slot] = stickman->legs[0];
+                    auto walk = steer; walk["slot"] = slot; walk["comm"] = slot % 2 ? 2 : 1; // odd right, even left
+                    four.Apply(ParseCommand(walk, false));
+                }
+                for (int t = 0; t < 30; ++t) four.Advance(); // stickmen are fast: 100 px right, 50 left
+                std::string walks;
+                bool walked = true;
+                for (int slot = 1; slot <= 4; ++slot)
+                {
+                    Check(RoomStickman(*four.sim, slot), "four stickmen walking apart all survive");
+                    auto moved = RoomStickman(*four.sim, slot)->legs[0] - start[slot];
+                    walks += " " + std::to_string(slot) + ":" + std::to_string(moved);
+                    walked = walked && (slot % 2 ? moved > 5 : moved < -5);
+                }
+                if (!walked) throw std::runtime_error("four stickmen did not each walk their own way:" + walks);
+                // Through a portal, a player's fighter stays theirs (exiting reuses its slot).
+                auto *third = RoomStickman(*four.sim, 3);
+                int fighterPart = -1;
+                for (int i = 0; i < NPART; ++i)
+                    if (four.sim->parts[i].type == PT_FIGH && &four.sim->fighters[four.sim->parts[i].tmp] == third) fighterPart = i;
+                Check(fighterPart >= 0, "slot 3's fighter is on the screen");
+                auto out = four.sim->create_part(-1, 300, 200, PT_PRTO);
+                four.Advance(); // the exit portal picks its channel
+                auto channel = four.sim->parts[out].tmp;
+                four.sim->portalp[channel][1][0] = four.sim->parts[fighterPart]; // as entering a portal does
+                four.sim->kill_part(fighterPart);
+                third->spwn = 1; four.sim->fighcount++;
+                for (int t = 0; t < 10; ++t) four.Advance();
+                Check(four.sim->elementCount[PT_FIGH] == 2 && RoomStickman(*four.sim, 3) && RoomStickman(*four.sim, 4),
+                      "a player's fighter comes out of a portal still steered by its player");
+                // Placing it again while it is inside a portal: one fighter, still theirs.
+                auto *held = RoomStickman(*four.sim, 3);
+                for (int i = 0; i < NPART; ++i)
+                    if (four.sim->parts[i].type == PT_FIGH && &four.sim->fighters[four.sim->parts[i].tmp] == held)
+                    {
+                        four.sim->portalp[channel][1][0] = four.sim->parts[i];
+                        four.sim->kill_part(i);
+                        held->spwn = 1; four.sim->fighcount++;
+                    }
+                four.sim->kill_part(out); // nowhere to come out
+                spawn["slot"] = 3; spawn["x1"] = 100; spawn["y1"] = 280;
+                four.Apply(ParseCommand(spawn, false));
+                int controlled = 0;
+                for (auto &fighter : four.sim->fighters) controlled += fighter.spwn && fighter.controller == 3;
+                Check(controlled == 1 && four.sim->fighcount == 2 && four.sim->elementCount[PT_FIGH] == 2,
+                      "placing a stickman held in a portal moves it out, never duplicates it");
+                // The same for slot 1's stickman.
+                for (int i = 0; i < NPART; ++i)
+                    if (four.sim->parts[i].type == PT_STKM)
+                    {
+                        four.sim->portalp[channel][1][1] = four.sim->parts[i];
+                        four.sim->kill_part(i);
+                        four.sim->player.spwn = 1;
+                    }
+                spawn["slot"] = 1; spawn["x1"] = 300; // clear of the other three
+                four.Apply(ParseCommand(spawn, false));
+                four.Advance(); // a new stickman takes its slot on its first update
+                Check(four.sim->elementCount[PT_STKM] == 1 && RoomStickman(*four.sim, 1) && !four.sim->portalp[channel][1][1].type,
+                      "placing a stickman held in a portal works");
+            }
             // Resets are admin room commands.
             auto reset = ParseJson(R"({"seq":3,"op":"reset","what":"air"})");
             Reject([&] { ParseCommand(reset, false); });

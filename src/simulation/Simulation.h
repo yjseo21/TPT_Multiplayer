@@ -285,6 +285,8 @@ public:
 	template<bool PhotoelectricEffect, class Sim>
 	static GetNormalResult get_normal_interp(Sim &sim, int pt, float x0, float y0, float dx, float dy);
 	void clear_sim();
+	// Every spark back to the element it sparked; wires and wireless channels cleared.
+	void ResetSparks();
 	Simulation();
 	virtual ~Simulation();
 
