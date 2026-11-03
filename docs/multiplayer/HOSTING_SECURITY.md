@@ -43,10 +43,13 @@ of JSON, up to 4 KB each. Anyone can connect.
     anything is unpacked (the game itself allows 200 MB);
   - each save is fully parsed on the sender's own connection thread, so a
     broken one never reaches the room;
-  - about two pastes per second per player at most.
+  - about three pastes or loads per second per player at most (loads are for
+    administrators only).
 - **Resources are bounded:**
   - 32 connections and 4 players;
-  - each player's edits have a budget (commands and brush work per second);
+  - each player's edits have a budget: 120 commands and 20 million brush
+    cells a second, about 60 ms of server time a second per player at most;
+    one command is at most about 3 ms, so no edit holds up a tick for long;
   - each connection's outgoing queue is capped in messages and in bytes
     (64 MB); a client that stops reading is dropped;
   - connections that don't log in within 5 seconds are closed.

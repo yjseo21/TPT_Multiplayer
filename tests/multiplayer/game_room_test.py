@@ -57,11 +57,20 @@ STEPS = [
     dict(at=3.5, do="tool", tool="DEFAULT_PT_STNE"),
     dict(at=3.5, do="brush", id=2, rx=5, ry=5),
     dict(at=3.6, do="points", x1=400, y1=80, x2=400, y2=80, held=False),
+    # A Shift line with a large brush: line mode drags while the mouse moves, then the
+    # line goes whole on release (it used to be refused or cut short).
+    dict(at=3.65, do="tool", tool="DEFAULT_PT_GOLD"),
+    dict(at=3.65, do="brush", id=0, rx=60, ry=60),
+    dict(at=3.66, do="drag", x1=10, y1=270, x2=300, y2=270),
+    dict(at=3.67, do="drag", x1=10, y1=270, x2=450, y2=270),
+    dict(at=3.68, do="drag", x1=10, y1=270, x2=600, y2=270),
+    dict(at=3.7, do="line", x1=10, y1=270, x2=600, y2=270),
     # A huge brush dragged across the canvas: the client must split it.
     dict(at=4.0, do="tool", tool="DEFAULT_PT_WATR"),
     dict(at=4.0, do="brush", id=0, rx=200, ry=200),
     dict(at=4.1, do="points", x1=50, y1=200, x2=560, y2=220, held=True),
     # An action rooms do not support yet is refused, not applied.
+    dict(at=5.75, do="mark", name="gold-line"),
     dict(at=5.8, do="local"),  # after a log row has recorded the trim notice
     # Own canvas: draw there while the room keeps running.
     dict(at=6.2, do="toggle"),
@@ -72,7 +81,7 @@ STEPS = [
     dict(at=8.4, do="toggle"),  # own canvas for 2 s: at least one log row
     dict(at=8.56, do="reset", what="air"),  # admin: the room's air is reset for everyone
     # Console commands change the room's world for everyone (admin).
-    dict(at=8.57, do="console", text="bubble 300,60"),
+    dict(at=8.57, do="console", text="bubble 560,60"),  # beyond the reach of the huge drag
     dict(at=8.58, do="console", text="create metl 500,60"),
     dict(at=8.59, do="console", text="set tmp metl 9"),
     # Decoration and property tools, and signs (with a button), reach the room too.
@@ -213,6 +222,9 @@ def main():
             assert len(pasted) == 2 and pasted[1]["dmndCount"] >= 1.8 * pasted[0]["dmndCount"] > 0,                 [(r["mark"], r["dmndCount"], r.get("lastNotice")) for r in pasted]
             prefs = json.loads((game_dir / "powder.pref").read_text())
             assert prefs.get("Multiplayer", {}).get("Room") == f"ws://127.0.0.1:{port}", prefs
+            # The whole line reached the room: a 590-pixel sweep of a 121-pixel brush.
+            gold = next(r for r in g if r.get("mark") == "gold-line")
+            assert gold["goldCount"] >= 70000, (gold["goldCount"], gold.get("lastNotice"))
             assert any("too large" in r.get("lastNotice", "") for r in g), [(round(r.get("elapsedSeconds", -1), 2), r.get("lastNotice"), r.get("appliedCommands")) for r in g]
             assert any(r.get("shownIsRoomWorld") for r in g), "the room's world was never shown"
             assert any(r.get("showingRoom") is False for r in g), "the own canvas was never shown"

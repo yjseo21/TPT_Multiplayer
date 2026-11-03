@@ -105,7 +105,7 @@ private:
     struct Unapplied { Json::Value command; uint64_t seq; double sentAt; };
     std::deque<Unapplied> unapplied;
     double queuedWork = 0, workTokens, operationTokens, refilledAt;
-    bool Enqueue(std::vector<Json::Value> commands, std::string &why);
+    bool Enqueue(std::vector<Json::Value> commands, std::string &why, bool whole = false);
     void Flush();
     bool SendAdmin(Json::Value command, std::string &why);
     bool SendStickman(Json::Value command, std::string &why);

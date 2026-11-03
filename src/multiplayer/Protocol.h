@@ -90,6 +90,16 @@ Json::Value SettingsJson(const SimulationSettingsChange &settings);
 // own thread never spends time on a bad one.
 void CheckPastedSave(const Command &paste);
 // Brush-cell operations: one tool command, and a player's sustained rate (and burst).
+// A cell operation takes about 3 ns, so one command stays near 3 ms of a room's
+// tick, and a player's sustained rate near 60 ms of server time a second.
 constexpr unsigned ToolCommandCostLimit = 1000000;
-constexpr double EditWorkPerSecond = 3000000;
+constexpr double EditWorkPerSecond = 20000000;
+// A paste or load: about three a second per player.
+constexpr unsigned PasteCost = 6000000;
+// The cost of one stamp of a tool's brush (walls work on whole cells).
+unsigned StampCost(const std::string &tool, int radius, int radiusY);
+// The tools whose drag (line mode, while the mouse moves) or click (on release)
+// does anything: the others' are not sent.
+bool ToolActsOnDrag(const std::string &tool);
+bool ToolActsOnClick(const std::string &tool);
 }

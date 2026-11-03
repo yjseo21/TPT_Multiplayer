@@ -168,6 +168,33 @@ int main()
                 Check(x == stroke.x2 && y == stroke.y2, "parts end where the stroke ends");
                 stroke.radiusX = stroke.radiusY = 4;
                 Check(StrokeCommands(stroke).size() == 1, "an ordinary stroke stays one command");
+                // Line mode calls drag on every mouse move, and every stroke ends with a
+                // click: only the tools that act on them send them.
+                stroke.radiusX = stroke.radiusY = 50; stroke.action = "drag";
+                Check(StrokeCommands(stroke).empty(), "a drag that does nothing is not sent");
+                stroke.tool = "DEFAULT_TOOL_WIND";
+                Check(StrokeCommands(stroke).size() == 1, "wind's drag is sent");
+                stroke.action = "click";
+                Check(StrokeCommands(stroke).empty(), "a click that does nothing is not sent");
+                stroke.tool = "DEFAULT_PT_FIGH";
+                Check(StrokeCommands(stroke).size() == 1, "a fighter's click is sent");
+                // Wind stamps its brush once, so even the largest wind line is one command.
+                stroke.tool = "DEFAULT_TOOL_WIND"; stroke.action = "line"; stroke.radiusX = stroke.radiusY = 200;
+                auto wind = StrokeCommands(stroke);
+                wind[0]["seq"] = Json::UInt64(1);
+                Check(wind.size() == 1 && ParseCommand(wind[0], false).Cost() == StampCost("DEFAULT_TOOL_WIND", 200, 200),
+                    "a wind line is one stamp");
+                // Walls work on whole cells, and are charged so.
+                stroke.tool = "DEFAULT_WL_WALL";
+                auto wall = StrokeCommands(stroke);
+                Check(StampCost("DEFAULT_WL_WALL", 200, 200) * 8 < StampCost("DEFAULT_PT_DUST", 200, 200) &&
+                      wall.size() < StrokeCommands([&] { auto s = stroke; s.tool = "DEFAULT_PT_DUST"; return s; }()).size(),
+                      "walls are charged by cell");
+                // A full-width line with a medium brush fits well within a second of a player's budget.
+                stroke.tool = "DEFAULT_PT_DUST"; stroke.radiusX = stroke.radiusY = 50;
+                double lineCost = 0;
+                for (auto &part : StrokeCommands(stroke)) { part["seq"] = Json::UInt64(1); lineCost += ParseCommand(part, false).Cost(); }
+                Check(lineCost < EditWorkPerSecond/2, "a medium-brush line costs well under a second of budget");
                 Check(RoomSupportsTool("DEFAULT_PT_WATR") && RoomSupportsTool("DEFAULT_WL_FAN") && RoomSupportsTool("DEFAULT_TOOL_HEAT"),
                     "element, wall and simulation tools are available in rooms");
                 Check(RoomSupportsTool("DEFAULT_UI_PROPERTY") && RoomSupportsTool("DEFAULT_DECOR_SMDG") && !RoomSupportsTool("DEFAULT_UI_SIGN"),

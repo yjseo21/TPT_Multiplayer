@@ -249,16 +249,38 @@ uint64_t Sequence(const Json::Value &v)
         throw std::runtime_error("invalid sequence");
     return v["seq"].asUInt64();
 }
+unsigned StampCost(const std::string &tool, int radius, int radiusY)
+{
+    if (tool.starts_with("DEFAULT_WL_"))
+        return unsigned(2*(radius/CELL)+1)*unsigned(2*(radiusY/CELL)+1);
+    return unsigned(2*radius+1)*unsigned(2*radiusY+1);
+}
+bool ToolActsOnDrag(const std::string &tool)
+{
+    return tool == "DEFAULT_TOOL_WIND";
+}
+bool ToolActsOnClick(const std::string &tool)
+{
+    return tool == "DEFAULT_PT_FIGH" || tool == "DEFAULT_PT_STKM" || tool == "DEFAULT_PT_STKM2";
+}
 unsigned Command::Cost() const
 {
     if (kind == ToolAction)
     {
         if (tool == "DEFAULT_WL_FAN" && action == "line" && !dragging) return XRES*YRES;
         if (action == "fill") return XRES*YRES;
-        if (action == "box") return unsigned((std::abs(x2-x1)+1)*(std::abs(y2-y1)+1));
-        return unsigned((std::max(std::abs(x2-x1), std::abs(y2-y1))+1)*(2*radius+1)*(2*radiusY+1));
+        if (action == "click") return 1; // at most one particle placed
+        if (action == "box")
+        {
+            auto cells = unsigned((std::abs(x2-x1)+1)*(std::abs(y2-y1)+1));
+            return tool.starts_with("DEFAULT_WL_") ? cells/(CELL*CELL)+1 : cells;
+        }
+        auto stamp = StampCost(tool, radius, radiusY);
+        // Wind stamps its brush once, at the start, pushing along the line.
+        if (action == "point" || action == "drag" || tool == "DEFAULT_TOOL_WIND") return stamp;
+        return unsigned(std::max(std::abs(x2-x1), std::abs(y2-y1))+1)*stamp; // line, end: a stamp per point
     }
-    if (kind == Paste || kind == Load) return ToolCommandCostLimit; // about two a second per player
+    if (kind == Paste || kind == Load) return PasteCost;
     return kind == Brush ? unsigned((std::max(std::abs(x2-x1), std::abs(y2-y1)) + 1) * (2*radius+1) * (2*radius+1)) : 1;
 }
 namespace

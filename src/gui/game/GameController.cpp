@@ -2452,6 +2452,7 @@ void GameController::RunRoomAutomation()
 		sample["pressureAt"] = shown->pv[YCELLS/2][XCELLS/2];
 		sample["soapCount"] = shown->elementCount[PT_SOAP];
 		sample["dmndCount"] = shown->elementCount[PT_DMND];
+		sample["goldCount"] = shown->elementCount[PT_GOLD];
 		sample["signs"] = Json::UInt64(shown->signs.size());
 		sample["wallCells"] = [shown] { int n = 0; for (auto &row : shown->bmap) for (auto cell : row) n += cell != 0; return n; }();
 		if (auto r = shown->pmap[60][500]; r && TYP(r) == PT_METL)
@@ -2506,6 +2507,7 @@ void GameController::RunRoomAutomation()
 		}
 		else if (act == "points") DrawPoints(0, a, b, step["held"].asBool());
 		else if (act == "line") DrawLine(0, a, b);
+		else if (act == "drag") ToolDrag(0, a, b); // line mode, while the mouse moves
 		else if (act == "rect") DrawRect(0, a, b);
 		else if (act == "fill") DrawFill(0, a);
 		else if (act == "toggle") ToggleRoom();

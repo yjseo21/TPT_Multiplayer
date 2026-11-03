@@ -36,7 +36,12 @@ std::vector<Json::Value> StrokeCommands(const ToolStroke &s)
         return c;
     };
     std::vector<Json::Value> out;
-    if (s.action != "line")
+    // A drag (line mode, while the mouse moves) and a click (on release) do nothing
+    // for most tools; the game calls them anyway.
+    if ((s.action == "drag" && !ToolActsOnDrag(s.tool)) || (s.action == "click" && !ToolActsOnClick(s.tool)))
+        return out;
+    // Wind pushes along the whole line from one stamp: splitting it would change it.
+    if (s.action != "line" || s.tool == "DEFAULT_TOOL_WIND")
     {
         out.push_back(command(s.x1, s.y1, s.x2, s.y2));
         return out;
@@ -44,8 +49,7 @@ std::vector<Json::Value> StrokeCommands(const ToolStroke &s)
     // A line stamps the brush at every point: split it so each part stays within
     // the server's per-command work limit. Parts share endpoints, as consecutive
     // mouse segments do in single-player.
-    unsigned area = unsigned(2*rx+1)*unsigned(2*ry+1);
-    int perPart = std::max(1, int(ToolCommandCostLimit/area)-1);
+    int perPart = std::max(1, int(ToolCommandCostLimit/StampCost(s.tool, rx, ry))-1);
     int span = std::max(std::abs(s.x2-s.x1), std::abs(s.y2-s.y1));
     int parts = std::max(1, (span+perPart-1)/perPart);
     for (int i = 0; i < parts; ++i)

@@ -13,8 +13,8 @@
     rejoins from a fresh snapshot.
 - **Each player checks their own copy against the fingerprints in the seals.**
   A lagging player never holds up anyone else's checks.
-- **Edits have a per-player budget** of 120 commands per second and 3 million
-  brush cells per second.
+- **Edits have a per-player budget** of 120 commands per second and 20 million
+  brush cells per second (3 million before 4 November).
 
 ## Fixed: a join, rejoin or resync stalled the room for everyone
 

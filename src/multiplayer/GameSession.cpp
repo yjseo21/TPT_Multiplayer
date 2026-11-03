@@ -17,7 +17,7 @@ namespace
 constexpr double WorkRate = EditWorkPerSecond*.9, OperationRate = 120*.9;
 constexpr size_t MaxUnconfirmed = 48;
 }
-bool GameSession::Enqueue(std::vector<Json::Value> commands, std::string &why)
+bool GameSession::Enqueue(std::vector<Json::Value> commands, std::string &why, bool whole)
 {
     std::vector<Outgoing> parsed;
     double work = 0;
@@ -29,7 +29,7 @@ bool GameSession::Enqueue(std::vector<Json::Value> commands, std::string &why)
         if (command.isMember("type") || command["op"] == "paste" || command["op"] == "load")
         {
             paste = true;
-            double cost = command.isMember("type") ? 0 : ToolCommandCostLimit;
+            double cost = command.isMember("type") ? 0 : PasteCost;
             parsed.push_back({std::move(command), cost});
             work += cost;
             continue;
@@ -48,6 +48,19 @@ bool GameSession::Enqueue(std::vector<Json::Value> commands, std::string &why)
     {
         why = "The room is still busy with your earlier edits; try pasting again in a moment.";
         return false;
+    }
+    // A deliberate line, box or fill goes whole, paced out over as long as it takes
+    // (a full-width line with the largest brush: about five seconds).
+    if (whole && !paste)
+    {
+        if (queuedWork > 2*WorkRate)
+        {
+            why = "The room is still busy with your earlier edits; try again in a moment.";
+            return false;
+        }
+        for (auto &entry : parsed) { queuedWork += entry.cost; outbox.push_back(std::move(entry)); }
+        Flush();
+        return true;
     }
     // At most about two seconds of the room's editing budget may wait here; the
     // rest of an enormous stroke is skipped, as a lagging single-player game would.
@@ -146,7 +159,9 @@ bool GameSession::Send(const ToolStroke &stroke, std::string &why)
 {
     if (!session.Synchronized()) { why = "The room is still synchronizing."; return false; }
     if (!RoomSupportsTool(stroke.tool)) { why = "This tool is not available in rooms yet."; return false; }
-    return Enqueue(StrokeCommands(stroke), why);
+    // Freehand strokes keep up with the mouse (the rest of an enormous one is
+    // skipped); a line, box, fill or click made at once is sent whole.
+    return Enqueue(StrokeCommands(stroke), why, !stroke.dragging);
 }
 bool GameSession::SendAdmin(Json::Value command, std::string &why)
 {
