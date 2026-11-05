@@ -65,8 +65,10 @@ STEPS = [
     dict(at=3.67, do="drag", x1=10, y1=270, x2=450, y2=270),
     dict(at=3.68, do="drag", x1=10, y1=270, x2=600, y2=270),
     dict(at=3.7, do="line", x1=10, y1=270, x2=600, y2=270),
-    # A huge brush dragged across the canvas: the client must split it.
-    dict(at=4.0, do="tool", tool="DEFAULT_PT_WATR"),
+    # A huge brush dragged across the canvas: the client must split and trim it.
+    # The air tool costs as much per cell as an element but adds no particles (a
+    # canvas of water slowed CI runners to 1 tick a second); the air reset clears it.
+    dict(at=4.0, do="tool", tool="DEFAULT_TOOL_AIR"),
     dict(at=4.0, do="brush", id=0, rx=200, ry=200),
     dict(at=4.1, do="points", x1=50, y1=200, x2=560, y2=220, held=True),
     # An action rooms do not support yet is refused, not applied.
