@@ -93,8 +93,8 @@ STEPS = [
     dict(at=8.596, do="tool", tool="DEFAULT_UI_PROPERTY"),
     dict(at=8.597, do="points", x1=500, y1=60, x2=500, y2=60, held=False),
     dict(at=8.598, do="sign", text="Hello room", x1=120, y1=40),
-    dict(at=8.599, do="sign", text="{b|press}", x1=200, y1=40),
-    dict(at=8.5995, do="console", text="create metl 200,40"),  # a button sparks the conductor under it
+    dict(at=8.599, do="sign", text="{b|press}", x1=590, y1=40),
+    dict(at=8.5995, do="console", text="create metl 590,40"),  # a button sparks the conductor under it (beyond the huge drag)
     # As in single-player, set reports how many particles it changes (the floor).
     dict(at=8.5997, do="console", text="set life dmnd 0"),
     # The room dialog over the game: the room keeps running underneath.

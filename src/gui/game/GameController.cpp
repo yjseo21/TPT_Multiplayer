@@ -2460,7 +2460,7 @@ void GameController::RunRoomAutomation()
 			sample["metlDeco"] = Json::UInt64(shown->parts[ID(r)].dcolour);
 			sample["metlTmp2"] = shown->parts[ID(r)].tmp2;
 		}
-		sample["buttonSparked"] = shown->pmap[40][200] && TYP(shown->pmap[40][200]) == PT_SPRK; // under the test's button sign
+		sample["buttonSparked"] = shown->pmap[40][590] && TYP(shown->pmap[40][590]) == PT_SPRK; // under the test's button sign
 		sample["metlCount"] = shown->elementCount[PT_METL];
 		if (room)
 		{

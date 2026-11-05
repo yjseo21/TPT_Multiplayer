@@ -208,7 +208,7 @@ def run(d):
         # Authentication failures are permanent and must not loop forever.
         rejected = subprocess.run([fixture["CLIENT"], "--url", f"ws://127.0.0.1:{port}", "--headless", "--frames", "1"],
                                   env=dict(env, TPT_ROOM_TOKEN="wrong"), capture_output=True, text=True, timeout=8)
-        assert rejected.returncode != 0 and "retry in" not in rejected.stdout
+        assert rejected.returncode != 0 and "retry in" not in rejected.stdout, (rejected.returncode, rejected.stdout, rejected.stderr)
         print("PASS: initial retry, live connection drop, two crashes, fresh baselines, view restoration, rotating backups, write failure/retry, corrupt fallback, directory lock, permanent auth rejection", flush=True)
     finally:
         if directory.exists(): directory.chmod(0o700)
